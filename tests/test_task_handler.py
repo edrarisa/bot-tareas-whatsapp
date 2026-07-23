@@ -17,6 +17,9 @@ class FakeRoster:
     def resolve_name(self, jid):
         return self._known.get(jid)
 
+    def same_person(self, jid_a, jid_b):
+        return jid_a == jid_b
+
 
 class FakeSheetsClient:
     def __init__(self, fail=False):
@@ -122,6 +125,47 @@ def test_saves_task_with_assignee_from_mention(monkeypatch):
     assert saved["assignee"] == "Cristian"
     assert saved["due_date"] == "2026-07-24"
     assert saved["status"] == "Pendiente"
+
+
+def test_self_mention_does_not_self_assign(monkeypatch):
+    roster = FakeRoster({SENDER_JID: "Ana"})
+    sheets_client = FakeSheetsClient()
+    monkeypatch.setattr(
+        "handlers.task_handler.classify_message",
+        lambda text, date, **kw: ClassificationResult(
+            es_tarea=True, descripcion="Avisarle a alguien", fecha_limite=None
+        ),
+    )
+
+    handle_webhook_payload(
+        _payload("recuérdame @Ana avisarle a alguien", mentioned_jids=[SENDER_JID]),
+        roster,
+        sheets_client,
+        GROUP_JID,
+    )
+
+    assert sheets_client.appended[0]["assignee"] == "Sin asignar"
+
+
+def test_unresolvable_mention_falls_back_to_unassigned(monkeypatch):
+    unknown_jid = "573007778899@s.whatsapp.net"
+    roster = FakeRoster({SENDER_JID: "Ana"})
+    sheets_client = FakeSheetsClient()
+    monkeypatch.setattr(
+        "handlers.task_handler.classify_message",
+        lambda text, date, **kw: ClassificationResult(
+            es_tarea=True, descripcion="Revisar el stand", fecha_limite=None
+        ),
+    )
+
+    handle_webhook_payload(
+        _payload("revisa el stand @alguien", mentioned_jids=[unknown_jid]),
+        roster,
+        sheets_client,
+        GROUP_JID,
+    )
+
+    assert sheets_client.appended[0]["assignee"] == "Sin asignar"
 
 
 def test_saves_task_as_unassigned_when_no_mention(monkeypatch):

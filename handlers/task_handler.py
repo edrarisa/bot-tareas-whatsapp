@@ -30,7 +30,7 @@ def handle_webhook_payload(payload: dict, roster, sheets_client, group_jid: str)
 
     assignee = "Sin asignar"
     for jid in message.mentioned_jids:
-        if jid == message.sender_jid:
+        if roster.same_person(jid, message.sender_jid):
             continue
         name = roster.resolve_name(jid)
         if name:

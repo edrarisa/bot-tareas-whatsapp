@@ -36,7 +36,9 @@ class Roster:
 
     @staticmethod
     def _phone_from_jid(jid: str) -> str:
-        return jid.split("@", 1)[0]
+        # JIDs may carry a device suffix (e.g. "573001112233:19@s.whatsapp.net"),
+        # which must be dropped before comparing/normalizing the phone number.
+        return jid.split("@", 1)[0].split(":", 1)[0]
 
     def is_known_sender(self, jid: str) -> bool:
         self._ensure_loaded()
@@ -45,3 +47,6 @@ class Roster:
     def resolve_name(self, jid: str) -> str | None:
         self._ensure_loaded()
         return self._by_phone.get(self._normalize(self._phone_from_jid(jid)))
+
+    def same_person(self, jid_a: str, jid_b: str) -> bool:
+        return self._normalize(self._phone_from_jid(jid_a)) == self._normalize(self._phone_from_jid(jid_b))
