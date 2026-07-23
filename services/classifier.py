@@ -54,16 +54,24 @@ def classify_message(
         response = active_client.chat.completions.create(
             model="gpt-4o-mini",
             response_format={"type": "json_object"},
+            timeout=30,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT.format(current_date=current_date)},
                 {"role": "user", "content": text},
             ],
         )
         data = json.loads(response.choices[0].message.content)
+        es_tarea = data["es_tarea"]
+        descripcion = data["descripcion"]
+        fecha_limite = data["fecha_limite"]
+        if not isinstance(es_tarea, bool):
+            raise ValueError(f"es_tarea must be a bool, got {type(es_tarea).__name__}")
+        if descripcion is not None and not isinstance(descripcion, str):
+            raise ValueError(f"descripcion must be a string or null, got {type(descripcion).__name__}")
+        if fecha_limite is not None and not isinstance(fecha_limite, str):
+            raise ValueError(f"fecha_limite must be a string or null, got {type(fecha_limite).__name__}")
         return ClassificationResult(
-            es_tarea=bool(data["es_tarea"]),
-            descripcion=data["descripcion"],
-            fecha_limite=data["fecha_limite"],
+            es_tarea=es_tarea, descripcion=descripcion, fecha_limite=fecha_limite
         )
     except Exception as exc:
         logger.warning(f"Classifier failed: {exc}")
