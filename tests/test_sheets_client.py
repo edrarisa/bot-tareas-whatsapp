@@ -69,3 +69,20 @@ def test_append_task_writes_empty_string_when_no_due_date():
     )
 
     assert tareas.appended_rows[0][4] == ""
+
+
+def test_read_team_roster_skips_rows_with_blank_number():
+    equipo = FakeWorksheet(
+        values=[
+            ["Nombre", "Numero"],
+            ["Cristian", "573001112233"],
+            ["Ana", ""],
+            ["   ", "573004445566"],
+            ["Pablo", "   "],
+        ]
+    )
+    client = SheetsClient(FakeSpreadsheet({"Equipo": equipo}))
+
+    roster = client.read_team_roster()
+
+    assert roster == [("Cristian", "573001112233")]

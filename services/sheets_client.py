@@ -12,7 +12,11 @@ class SheetsClient:
     def read_team_roster(self) -> list[tuple[str, str]]:
         worksheet = self._spreadsheet.worksheet("Equipo")
         rows = worksheet.get_all_values()[1:]
-        return [(row[0], row[1]) for row in rows if len(row) >= 2 and row[0]]
+        return [
+            (row[0], row[1])
+            for row in rows
+            if len(row) >= 2 and row[0].strip() and row[1].strip()
+        ]
 
     def append_task(
         self,
