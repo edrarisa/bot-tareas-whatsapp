@@ -27,7 +27,7 @@ def parse_webhook_payload(payload: dict) -> IncomingMessage | None:
     if not data:
         return None
 
-    key = data.get("key", {})
+    key = data.get("key") or {}
     group_jid = key.get("remoteJid")
     if not group_jid:
         return None
@@ -35,13 +35,13 @@ def parse_webhook_payload(payload: dict) -> IncomingMessage | None:
     sender_jid = key.get("participant") or group_jid
     from_me = bool(key.get("fromMe", False))
 
-    message = data.get("message", {})
+    message = data.get("message") or {}
     text = message.get("conversation")
     mentioned_jids: list[str] = []
     if text is None:
-        extended = message.get("extendedTextMessage", {})
+        extended = message.get("extendedTextMessage") or {}
         text = extended.get("text")
-        mentioned_jids = extended.get("contextInfo", {}).get("mentionedJid") or []
+        mentioned_jids = (extended.get("contextInfo") or {}).get("mentionedJid") or []
 
     if not text:
         return None

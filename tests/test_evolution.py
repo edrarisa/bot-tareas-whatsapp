@@ -71,3 +71,48 @@ def test_from_me_flag_is_read():
     }
     message = parse_webhook_payload(payload)
     assert message.from_me is True
+
+
+def test_handles_explicit_null_key():
+    """Handles explicit null value in key field without raising AttributeError."""
+    payload = {
+        "data": {
+            "key": None,
+            "message": {"conversation": "texto"},
+        }
+    }
+    assert parse_webhook_payload(payload) is None
+
+
+def test_handles_explicit_null_message():
+    """Handles explicit null value in message field without raising AttributeError."""
+    payload = {
+        "data": {
+            "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+            "message": None,
+        }
+    }
+    assert parse_webhook_payload(payload) is None
+
+
+def test_handles_explicit_null_context_info():
+    """Handles explicit null value in contextInfo field without raising AttributeError."""
+    payload = {
+        "data": {
+            "key": {
+                "remoteJid": "120363429440515454@g.us",
+                "participant": "573001112233@s.whatsapp.net",
+                "fromMe": False,
+            },
+            "message": {
+                "extendedTextMessage": {
+                    "text": "revisa el stand mañana",
+                    "contextInfo": None,
+                }
+            },
+        }
+    }
+    message = parse_webhook_payload(payload)
+    assert message is not None
+    assert message.text == "revisa el stand mañana"
+    assert message.mentioned_jids == []
