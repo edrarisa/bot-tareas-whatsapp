@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 import requests
 
@@ -120,6 +122,31 @@ def test_handles_explicit_null_context_info():
     assert message is not None
     assert message.text == "revisa el stand mañana"
     assert message.mentioned_jids == []
+
+
+def test_logs_debug_when_data_missing(caplog):
+    caplog.set_level(logging.DEBUG)
+    assert parse_webhook_payload({"event": "connection.update"}) is None
+    assert any("data" in record.message.lower() for record in caplog.records)
+
+
+def test_logs_debug_when_remote_jid_missing(caplog):
+    caplog.set_level(logging.DEBUG)
+    payload = {"data": {"key": {}, "message": {"conversation": "hola"}}}
+    assert parse_webhook_payload(payload) is None
+    assert any("remotejid" in record.message.lower() for record in caplog.records)
+
+
+def test_logs_debug_when_text_missing(caplog):
+    caplog.set_level(logging.DEBUG)
+    payload = {
+        "data": {
+            "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+            "message": {"imageMessage": {"caption": "sin texto"}},
+        }
+    }
+    assert parse_webhook_payload(payload) is None
+    assert any("text" in record.message.lower() for record in caplog.records)
 
 
 def test_send_text_message_posts_to_evolution_api(monkeypatch):

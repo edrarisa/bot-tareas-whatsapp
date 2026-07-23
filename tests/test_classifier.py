@@ -130,3 +130,19 @@ def test_raises_classifier_error_when_fecha_limite_is_not_a_string():
 
     with pytest.raises(ClassifierError):
         classify_message("algo", "2026-07-23", client=client)
+
+
+def test_raises_classifier_error_when_es_tarea_true_but_descripcion_empty():
+    content = json.dumps({"es_tarea": True, "descripcion": "", "fecha_limite": None})
+    client = FakeClient(content=content)
+
+    with pytest.raises(ClassifierError):
+        classify_message("algo", "2026-07-23", client=client)
+
+
+def test_raises_classifier_error_when_es_tarea_true_but_descripcion_null():
+    content = json.dumps({"es_tarea": True, "descripcion": None, "fecha_limite": None})
+    client = FakeClient(content=content)
+
+    with pytest.raises(ClassifierError):
+        classify_message("algo", "2026-07-23", client=client)

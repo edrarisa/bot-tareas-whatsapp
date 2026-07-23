@@ -197,6 +197,49 @@ def test_ignores_classifier_errors_without_saving(monkeypatch):
     assert sheets_client.appended == []
 
 
+def test_today_is_computed_once_and_reused_for_classifier_and_sheets(monkeypatch):
+    roster = FakeRoster({SENDER_JID: "Ana"})
+    sheets_client = FakeSheetsClient()
+    captured = {}
+
+    def fake_classify(text, date, **kw):
+        captured["classify_date"] = date
+        return ClassificationResult(
+            es_tarea=True, descripcion="Revisar el stand", fecha_limite=None
+        )
+
+    monkeypatch.setattr("handlers.task_handler.classify_message", fake_classify)
+
+    handle_webhook_payload(_payload("hay que revisar el stand"), roster, sheets_client, GROUP_JID)
+
+    assert sheets_client.appended[0]["created_at"] == captured["classify_date"]
+
+
+def test_today_is_computed_using_configured_timezone(monkeypatch):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from config import Config
+
+    monkeypatch.setattr(Config, "TIMEZONE", "Pacific/Kiritimati")
+    roster = FakeRoster({SENDER_JID: "Ana"})
+    sheets_client = FakeSheetsClient()
+    captured = {}
+
+    def fake_classify(text, date, **kw):
+        captured["classify_date"] = date
+        return ClassificationResult(
+            es_tarea=True, descripcion="Revisar el stand", fecha_limite=None
+        )
+
+    monkeypatch.setattr("handlers.task_handler.classify_message", fake_classify)
+
+    handle_webhook_payload(_payload("hay que revisar el stand"), roster, sheets_client, GROUP_JID)
+
+    expected = datetime.now(ZoneInfo("Pacific/Kiritimati")).date().isoformat()
+    assert captured["classify_date"] == expected
+
+
 def test_sends_warning_when_sheets_write_fails(monkeypatch):
     roster = FakeRoster({SENDER_JID: "Ana"})
     sheets_client = FakeSheetsClient(fail=True)

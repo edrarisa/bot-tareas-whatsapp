@@ -70,6 +70,8 @@ def classify_message(
             raise ValueError(f"descripcion must be a string or null, got {type(descripcion).__name__}")
         if fecha_limite is not None and not isinstance(fecha_limite, str):
             raise ValueError(f"fecha_limite must be a string or null, got {type(fecha_limite).__name__}")
+        if es_tarea and not descripcion:
+            raise ValueError("es_tarea is true but descripcion is missing or empty")
         return ClassificationResult(
             es_tarea=es_tarea, descripcion=descripcion, fecha_limite=fecha_limite
         )

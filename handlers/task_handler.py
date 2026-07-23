@@ -3,8 +3,10 @@ Orchestrates a single incoming webhook message: parse -> filter -> classify
 -> resolve assignee -> save to Sheets (or warn the group on save failure).
 """
 import logging
-from datetime import date
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
+from config import Config
 from services.classifier import ClassifierError, classify_message
 from services.evolution import parse_webhook_payload, send_text_message
 
@@ -19,8 +21,10 @@ def handle_webhook_payload(payload: dict, roster, sheets_client, group_jid: str)
     if not roster.is_known_sender(message.sender_jid):
         return
 
+    today = datetime.now(ZoneInfo(Config.TIMEZONE)).date().isoformat()
+
     try:
-        result = classify_message(message.text, date.today().isoformat())
+        result = classify_message(message.text, today)
     except ClassifierError:
         logger.exception("Classifier failed for message from %s", message.sender_jid)
         return
@@ -41,7 +45,7 @@ def handle_webhook_payload(payload: dict, roster, sheets_client, group_jid: str)
 
     try:
         sheets_client.append_task(
-            created_at=date.today().isoformat(),
+            created_at=today,
             reporter=reporter_name,
             description=result.descripcion,
             assignee=assignee,

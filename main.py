@@ -13,6 +13,7 @@ from handlers.task_handler import handle_webhook_payload
 from services.roster import Roster
 from services.sheets_client import create_sheets_client
 
+logging.basicConfig(level=Config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 

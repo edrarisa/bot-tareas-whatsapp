@@ -27,6 +27,9 @@ class Config:
     # -- Logging --
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
 
+    # -- Behavior --
+    TIMEZONE: str = os.getenv("TIMEZONE", "America/Bogota")
+
     @classmethod
     def validate(cls) -> None:
         """Raises ValueError if any required credential/setting is missing."""
