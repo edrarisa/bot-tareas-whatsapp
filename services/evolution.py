@@ -25,13 +25,13 @@ def parse_webhook_payload(payload: dict) -> IncomingMessage | None:
     """Returns None when the payload isn't a parseable text message."""
     data = payload.get("data")
     if not data:
-        logger.debug("Ignoring webhook payload with no 'data' field")
+        logger.info("Ignoring webhook payload with no 'data' field")
         return None
 
     key = data.get("key") or {}
     group_jid = key.get("remoteJid")
     if not group_jid:
-        logger.debug("Ignoring webhook payload with no 'remoteJid'")
+        logger.info("Ignoring webhook payload with no 'remoteJid'")
         return None
 
     sender_jid = key.get("participant") or group_jid
@@ -46,7 +46,7 @@ def parse_webhook_payload(payload: dict) -> IncomingMessage | None:
         mentioned_jids = (extended.get("contextInfo") or {}).get("mentionedJid") or []
 
     if not text:
-        logger.debug("Ignoring webhook payload with no text content")
+        logger.info("Ignoring webhook payload with no text content")
         return None
 
     return IncomingMessage(

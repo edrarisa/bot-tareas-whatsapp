@@ -124,21 +124,21 @@ def test_handles_explicit_null_context_info():
     assert message.mentioned_jids == []
 
 
-def test_logs_debug_when_data_missing(caplog):
-    caplog.set_level(logging.DEBUG)
+def test_logs_info_when_data_missing(caplog):
+    caplog.set_level(logging.INFO)
     assert parse_webhook_payload({"event": "connection.update"}) is None
     assert any("data" in record.message.lower() for record in caplog.records)
 
 
-def test_logs_debug_when_remote_jid_missing(caplog):
-    caplog.set_level(logging.DEBUG)
+def test_logs_info_when_remote_jid_missing(caplog):
+    caplog.set_level(logging.INFO)
     payload = {"data": {"key": {}, "message": {"conversation": "hola"}}}
     assert parse_webhook_payload(payload) is None
     assert any("remotejid" in record.message.lower() for record in caplog.records)
 
 
-def test_logs_debug_when_text_missing(caplog):
-    caplog.set_level(logging.DEBUG)
+def test_logs_info_when_text_missing(caplog):
+    caplog.set_level(logging.INFO)
     payload = {
         "data": {
             "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
