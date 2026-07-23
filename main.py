@@ -3,6 +3,7 @@ FastAPI app: receives Evolution API webhooks and hands each message to the
 task handler. Google Sheets / roster clients are created lazily on startup
 so importing this module has no side effects (needed for testing).
 """
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -11,6 +12,8 @@ from config import Config
 from handlers.task_handler import handle_webhook_payload
 from services.roster import Roster
 from services.sheets_client import create_sheets_client
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -27,11 +30,14 @@ app = FastAPI(lifespan=lifespan)
 
 @app.post("/webhook")
 async def webhook(request: Request):
-    payload = await request.json()
-    handle_webhook_payload(
-        payload,
-        request.app.state.roster,
-        request.app.state.sheets_client,
-        Config.WHATSAPP_GROUP_JID,
-    )
+    try:
+        payload = await request.json()
+        handle_webhook_payload(
+            payload,
+            request.app.state.roster,
+            request.app.state.sheets_client,
+            Config.WHATSAPP_GROUP_JID,
+        )
+    except Exception:
+        logger.exception("Failed to process webhook payload")
     return {"status": "ok"}
