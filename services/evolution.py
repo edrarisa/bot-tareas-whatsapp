@@ -53,3 +53,14 @@ def parse_webhook_payload(payload: dict) -> IncomingMessage | None:
         mentioned_jids=mentioned_jids,
         from_me=from_me,
     )
+
+
+def send_text_message(group_jid: str, text: str) -> None:
+    """Sends a text message to a group JID via Evolution API."""
+    url = f"{Config.EVOLUTION_API_URL.rstrip('/')}/message/sendText/{Config.EVOLUTION_INSTANCE}"
+    headers = {"apikey": Config.EVOLUTION_API_KEY, "Content-Type": "application/json"}
+    payload = {"number": group_jid, "text": text}
+    response = requests.post(url, headers=headers, json=payload, timeout=30)
+    if not response.ok:
+        logger.error(f"Evolution API error: {response.status_code} — {response.text}")
+        response.raise_for_status()
