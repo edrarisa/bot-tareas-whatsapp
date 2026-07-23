@@ -2,7 +2,10 @@
 Resolves WhatsApp JIDs against the "Equipo" roster tab, caching the roster
 in memory for a short TTL to avoid hitting the Sheets API on every message.
 """
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 
 
 class Roster:
@@ -17,7 +20,13 @@ class Roster:
         now = self._time_func()
         if self._loaded_at != float("-inf") and now - self._loaded_at <= self._ttl_seconds:
             return
-        rows = self._sheets_client.read_team_roster()
+        try:
+            rows = self._sheets_client.read_team_roster()
+        except Exception:
+            if self._loaded_at == float("-inf"):
+                raise
+            logger.warning("Failed to refresh roster, using stale cache", exc_info=True)
+            return
         self._by_phone = {self._normalize(number): name for name, number in rows}
         self._loaded_at = now
 

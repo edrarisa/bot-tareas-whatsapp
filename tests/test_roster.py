@@ -1,3 +1,5 @@
+import pytest
+
 from services.roster import Roster
 
 
@@ -5,9 +7,14 @@ class FakeSheetsClient:
     def __init__(self, rows):
         self._rows = rows
         self.read_calls = 0
+        self.raise_exc = None
 
     def read_team_roster(self):
         self.read_calls += 1
+        if self.raise_exc is not None:
+            exc = self.raise_exc
+            self.raise_exc = None  # One-time exception
+            raise exc
         return self._rows
 
 
@@ -58,3 +65,31 @@ def test_caches_roster_within_ttl():
     clock["now"] += 301
     roster.is_known_sender("573001112233@s.whatsapp.net")
     assert sheets_client.read_calls == 2
+
+
+def test_falls_back_to_stale_cache_when_refresh_fails():
+    sheets_client = FakeSheetsClient([("Cristian", "573001112233")])
+    clock = {"now": 1000.0}
+    roster = Roster(sheets_client, ttl_seconds=300, time_func=lambda: clock["now"])
+
+    # First successful load
+    assert roster.resolve_name("573001112233@s.whatsapp.net") == "Cristian"
+    assert sheets_client.read_calls == 1
+
+    # Advance past TTL and make next read fail
+    clock["now"] += 301
+    sheets_client.raise_exc = ValueError("Sheets API error")
+
+    # Should use stale cache instead of raising
+    assert roster.resolve_name("573001112233@s.whatsapp.net") == "Cristian"
+    assert sheets_client.read_calls == 2
+
+
+def test_raises_when_first_load_fails():
+    sheets_client = FakeSheetsClient([("Cristian", "573001112233")])
+    sheets_client.raise_exc = ValueError("Sheets API error")
+    roster = Roster(sheets_client)
+
+    # Should raise because there's no cache to fall back to
+    with pytest.raises(ValueError, match="Sheets API error"):
+        roster.is_known_sender("573001112233@s.whatsapp.net")
