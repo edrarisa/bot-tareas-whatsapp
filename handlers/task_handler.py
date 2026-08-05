@@ -29,6 +29,9 @@ def _handle_message(message, roster, lid_resolver, sheets_client, group_jid: str
     if not roster.is_known_sender(sender_jid):
         return
 
+    if not message.mentioned_jids:
+        return
+
     today = datetime.now(ZoneInfo(Config.TIMEZONE)).date().isoformat()
 
     try:

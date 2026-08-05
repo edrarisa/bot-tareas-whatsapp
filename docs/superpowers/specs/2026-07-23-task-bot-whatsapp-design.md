@@ -59,7 +59,13 @@ evolution.py      ← responde en el grupo avisando que no se pudo guardar la ta
 
 - **`main.py`** — app FastAPI, expone `POST /webhook`, valida configuración al arrancar.
 - **`services/evolution.py`** — parsea el payload de Evolution API (texto, remitente, JIDs
-  mencionados) y envía mensajes de vuelta al grupo (solo usado para avisos de error).
+  mencionados) y envía mensajes de vuelta al grupo (solo usado para avisos de error). Si el
+  mensaje no trae metadatos estructurados de mención (pasa con algunos mensajes de tipo
+  `conversation`), extrae las menciones directamente del texto (`@<número>`) como respaldo.
+- **`services/lid_resolver.py`** — WhatsApp a veces manda un identificador de privacidad opaco
+  (`@lid`) en vez del número real de teléfono, tanto para el remitente como para las menciones.
+  Este módulo lo traduce de vuelta al número real, consultando la API de participantes del grupo
+  en Evolution API (con caché corta en memoria).
 - **`services/classifier.py`** — llama a OpenAI (GPT-4o mini) con el texto del mensaje y la fecha
   actual como contexto; devuelve `es_tarea: bool`, `descripcion: str`, `fecha_limite: str | null`
   (resuelve expresiones relativas como "mañana" o "el viernes" a una fecha absoluta).
@@ -82,20 +88,22 @@ lista de remitentes cuyos mensajes se analizan, y lista de posibles responsables
 
 ## Flujo de una tarea
 
-1. Alguien que está en el roster "Equipo" escribe en el grupo, ej: *"Cristian, revisa el stand
-   mañana @Cristian"* (con @mención real de WhatsApp a la persona).
+1. Alguien que está en el roster "Equipo" escribe en el grupo, ej: *"@Cristian revisa el stand
+   mañana"* (con @mención real de WhatsApp a la persona).
 2. Se valida que el mensaje es del grupo correcto y que el remitente está en "Equipo". Si no lo
    está, se ignora — no se gasta llamada a IA.
-3. El texto se manda al clasificador. Si determina que **no** es una tarea (ej. charla casual),
-   no pasa nada más — no se registra ni se responde, para no generar ruido.
-4. Si sí es una tarea: se busca en el mensaje una @mención real de WhatsApp que no sea el propio
-   remitente. Si hay una o más, se toma la primera y se resuelve ese JID a un nombre vía "Equipo"
-   — ese es el responsable. Si no hay ninguna mención, el responsable queda `"Sin asignar"`.
-   - Nota: si en la práctica el equipo escribe el nombre en texto plano en vez de usar la mención
-     real de WhatsApp, la tarea quedará "Sin asignar" hasta que se acostumbren a etiquetar. Es un
-     tema de hábito de uso, no de código, y queda visible en el Sheet para corregirlo con el
-     tiempo.
-5. Se escribe la fila en "Tareas" con fecha de creación, remitente, descripción, responsable,
+3. **Se requiere al menos una @mención real de WhatsApp para que el mensaje se considere una
+   posible tarea.** Un mensaje sin ninguna mención se ignora directamente, sin llamar al
+   clasificador — esto reemplazó una versión anterior del diseño donde un mensaje sin mención
+   podía registrarse igual como tarea "Sin asignar"; se cambió tras observar en producción que
+   sin este filtro la IA generaba falsos positivos con charla casual dirigida al bot.
+4. El texto se manda al clasificador. Si determina que **no** es una tarea, no pasa nada más — no
+   se registra ni se responde, para no generar ruido.
+5. Si sí es una tarea: de las menciones encontradas, se toma la primera que no sea el propio
+   remitente y se resuelve ese JID a un nombre vía "Equipo" — ese es el responsable. Si la única
+   mención es al propio remitente, o ninguna mención resuelve a alguien del roster, el responsable
+   queda `"Sin asignar"`.
+6. Se escribe la fila en "Tareas" con fecha de creación, remitente, descripción, responsable,
    fecha límite (si se mencionó) y estado `"Pendiente"`.
 
 ## Manejo de errores
