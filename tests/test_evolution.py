@@ -3,7 +3,12 @@ import logging
 import pytest
 import requests
 
-from services.evolution import parse_webhook_payload, send_text_message
+from services.evolution import (
+    IncomingImageMessage,
+    parse_image_messages,
+    parse_webhook_payload,
+    send_text_message,
+)
 from config import Config
 
 
@@ -302,9 +307,6 @@ def test_send_text_message_raises_on_http_error(monkeypatch):
         send_text_message("120363429440515454@g.us", "hola")
 
 
-from services.evolution import IncomingImageMessage, parse_image_messages
-
-
 def test_parses_image_message_with_caption_and_base64():
     payload = {
         "data": {
@@ -405,3 +407,41 @@ def test_parses_image_data_as_a_list():
     assert len(messages) == 2
     assert messages[0].caption == "ortografia 1"
     assert messages[1].caption == "ortografia 2"
+
+
+def test_handles_explicit_null_key_for_images():
+    payload = {
+        "data": {
+            "key": None,
+            "message": {"imageMessage": {"caption": "ortografia"}},
+            "base64": "aGVsbG8=",
+        }
+    }
+    assert parse_image_messages(payload) == []
+
+
+def test_handles_explicit_null_message_for_images():
+    payload = {
+        "data": {
+            "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+            "message": None,
+            "base64": "aGVsbG8=",
+        }
+    }
+    assert parse_image_messages(payload) == []
+
+
+def test_skips_unparseable_image_items_in_a_list_but_keeps_the_rest():
+    payload = {
+        "data": [
+            {"key": {}, "message": {"imageMessage": {"caption": "sin remoteJid"}}, "base64": "aGk="},
+            {
+                "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+                "message": {"imageMessage": {"caption": "este si sirve"}},
+                "base64": "aGk=",
+            },
+        ]
+    }
+    messages = parse_image_messages(payload)
+    assert len(messages) == 1
+    assert messages[0].caption == "este si sirve"
