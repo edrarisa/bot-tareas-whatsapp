@@ -3,6 +3,7 @@ Evolution API integration: parses incoming webhook payloads and sends
 outgoing messages back to the group.
 """
 import logging
+import re
 from dataclasses import dataclass
 
 import requests
@@ -10,6 +11,14 @@ import requests
 from config import Config
 
 logger = logging.getLogger(__name__)
+
+# Fallback for messages where WhatsApp/Evolution didn't attach structured
+# mention metadata (contextInfo.mentionedJid) even though the message text
+# visibly contains an "@<number>" tag -- this happens for some plain
+# "conversation" messages. Matched numbers are treated as "@lid" candidates;
+# Roster matches purely on the digits before "@", so this works whether the
+# number turns out to be a real LID or already a phone number.
+_TEXT_MENTION_PATTERN = re.compile(r"(?:^|\s)@(\d{5,20})")
 
 
 @dataclass
@@ -64,6 +73,9 @@ def _parse_message_item(item: dict) -> IncomingMessage | None:
     if not text:
         logger.info("Ignoring webhook payload with no text content. Raw item: %s", repr(item)[:800])
         return None
+
+    if not mentioned_jids:
+        mentioned_jids = [f"{digits}@lid" for digits in _TEXT_MENTION_PATTERN.findall(text)]
 
     logger.info("Parsed message. Raw 'message' object: %s", repr(message)[:800])
 

@@ -50,6 +50,60 @@ def test_parses_extended_text_message_with_mention():
     assert messages[0].mentioned_jids == ["573004445566@s.whatsapp.net"]
 
 
+def test_extracts_mention_from_plain_conversation_text_as_fallback():
+    """WhatsApp/Evolution sometimes sends a plain 'conversation' message with
+    the mention embedded as literal '@<number>' text and no structured
+    contextInfo.mentionedJid at all -- this must still resolve as a mention."""
+    payload = {
+        "data": {
+            "key": {
+                "remoteJid": "120363429440515454@g.us",
+                "participant": "573001112233@s.whatsapp.net",
+                "fromMe": False,
+            },
+            "message": {"conversation": "@203744859922485 porfa revisar las horas"},
+        }
+    }
+    messages = parse_webhook_payload(payload)
+    assert len(messages) == 1
+    assert messages[0].mentioned_jids == ["203744859922485@lid"]
+
+
+def test_does_not_extract_a_mention_from_text_with_no_at_sign():
+    payload = {
+        "data": {
+            "key": {
+                "remoteJid": "120363429440515454@g.us",
+                "participant": "573001112233@s.whatsapp.net",
+                "fromMe": False,
+            },
+            "message": {"conversation": "hay que revisar el stand mañana"},
+        }
+    }
+    messages = parse_webhook_payload(payload)
+    assert messages[0].mentioned_jids == []
+
+
+def test_prefers_structured_mentions_over_text_fallback():
+    payload = {
+        "data": {
+            "key": {
+                "remoteJid": "120363429440515454@g.us",
+                "participant": "573001112233@s.whatsapp.net",
+                "fromMe": False,
+            },
+            "message": {
+                "extendedTextMessage": {
+                    "text": "revisa el stand @Cristian",
+                    "contextInfo": {"mentionedJid": ["573004445566@s.whatsapp.net"]},
+                }
+            },
+        }
+    }
+    messages = parse_webhook_payload(payload)
+    assert messages[0].mentioned_jids == ["573004445566@s.whatsapp.net"]
+
+
 def test_parses_data_as_a_list_of_messages():
     """Evolution API sometimes sends 'data' as a list of message objects
     (e.g. several messages in one MESSAGES_UPSERT call) instead of a single
