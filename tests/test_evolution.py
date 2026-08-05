@@ -300,3 +300,108 @@ def test_send_text_message_raises_on_http_error(monkeypatch):
 
     with pytest.raises(requests.HTTPError):
         send_text_message("120363429440515454@g.us", "hola")
+
+
+from services.evolution import IncomingImageMessage, parse_image_messages
+
+
+def test_parses_image_message_with_caption_and_base64():
+    payload = {
+        "data": {
+            "key": {
+                "remoteJid": "120363429440515454@g.us",
+                "participant": "573001112233@s.whatsapp.net",
+                "fromMe": False,
+            },
+            "message": {
+                "imageMessage": {"caption": "revisar ortografía porfa", "mimetype": "image/png"}
+            },
+            "base64": "aGVsbG8=",
+        }
+    }
+    messages = parse_image_messages(payload)
+    assert len(messages) == 1
+    message = messages[0]
+    assert message.group_jid == "120363429440515454@g.us"
+    assert message.sender_jid == "573001112233@s.whatsapp.net"
+    assert message.caption == "revisar ortografía porfa"
+    assert message.image_base64 == "aGVsbG8="
+    assert message.mimetype == "image/png"
+    assert message.from_me is False
+
+
+def test_defaults_mimetype_when_missing():
+    payload = {
+        "data": {
+            "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+            "message": {"imageMessage": {"caption": "ortografia"}},
+            "base64": "aGVsbG8=",
+        }
+    }
+    messages = parse_image_messages(payload)
+    assert messages[0].mimetype == "image/jpeg"
+
+
+def test_defaults_caption_to_empty_string_when_missing():
+    payload = {
+        "data": {
+            "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+            "message": {"imageMessage": {}},
+            "base64": "aGVsbG8=",
+        }
+    }
+    messages = parse_image_messages(payload)
+    assert messages[0].caption == ""
+
+
+def test_returns_empty_list_when_no_base64_content():
+    payload = {
+        "data": {
+            "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+            "message": {"imageMessage": {"caption": "ortografia"}},
+        }
+    }
+    assert parse_image_messages(payload) == []
+
+
+def test_returns_empty_list_when_no_image_message():
+    payload = {
+        "data": {
+            "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+            "message": {"conversation": "hola"},
+            "base64": "aGVsbG8=",
+        }
+    }
+    assert parse_image_messages(payload) == []
+
+
+def test_returns_empty_list_when_no_remote_jid():
+    payload = {
+        "data": {
+            "key": {},
+            "message": {"imageMessage": {"caption": "ortografia"}},
+            "base64": "aGVsbG8=",
+        }
+    }
+    assert parse_image_messages(payload) == []
+
+
+def test_parses_image_data_as_a_list():
+    payload = {
+        "data": [
+            {
+                "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+                "message": {"imageMessage": {"caption": "ortografia 1"}},
+                "base64": "aGVsbG8=",
+            },
+            {
+                "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+                "message": {"imageMessage": {"caption": "ortografia 2"}},
+                "base64": "d29ybGQ=",
+            },
+        ]
+    }
+    messages = parse_image_messages(payload)
+    assert len(messages) == 2
+    assert messages[0].caption == "ortografia 1"
+    assert messages[1].caption == "ortografia 2"

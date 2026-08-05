@@ -30,6 +30,16 @@ class IncomingMessage:
     from_me: bool
 
 
+@dataclass
+class IncomingImageMessage:
+    group_jid: str
+    sender_jid: str
+    caption: str
+    image_base64: str
+    mimetype: str
+    from_me: bool
+
+
 def parse_webhook_payload(payload: dict) -> list[IncomingMessage]:
     """Returns the parseable text messages found in the payload (possibly empty).
 
@@ -84,6 +94,62 @@ def _parse_message_item(item: dict) -> IncomingMessage | None:
         sender_jid=sender_jid,
         text=text,
         mentioned_jids=mentioned_jids,
+        from_me=from_me,
+    )
+
+
+def parse_image_messages(payload: dict) -> list[IncomingImageMessage]:
+    """Returns the parseable image messages found in the payload (possibly empty).
+
+    Requires the Evolution API instance to have "Webhook Base64" enabled, so
+    the image content arrives directly in the payload as a "base64" field --
+    without it, there is nothing here to send to the spelling reviewer.
+    """
+    data = payload.get("data")
+    if not data:
+        return []
+
+    items = data if isinstance(data, list) else [data]
+
+    messages = []
+    for item in items:
+        message = _parse_image_item(item)
+        if message is not None:
+            messages.append(message)
+    return messages
+
+
+def _parse_image_item(item: dict) -> IncomingImageMessage | None:
+    key = item.get("key") or {}
+    group_jid = key.get("remoteJid")
+    if not group_jid:
+        return None
+
+    message = item.get("message") or {}
+    image_message = message.get("imageMessage")
+    if image_message is None:
+        return None
+
+    image_base64 = item.get("base64")
+    if not image_base64:
+        logger.info(
+            "Ignoring image message with no base64 content -- check that "
+            "'Webhook Base64' is enabled on the Evolution API instance. Raw item: %s",
+            repr(item)[:800],
+        )
+        return None
+
+    sender_jid = key.get("participant") or group_jid
+    from_me = bool(key.get("fromMe", False))
+    caption = image_message.get("caption") or ""
+    mimetype = image_message.get("mimetype") or "image/jpeg"
+
+    return IncomingImageMessage(
+        group_jid=group_jid,
+        sender_jid=sender_jid,
+        caption=caption,
+        image_base64=image_base64,
+        mimetype=mimetype,
         from_me=from_me,
     )
 
