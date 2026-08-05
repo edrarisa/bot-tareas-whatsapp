@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request
 
 from config import Config
 from handlers.task_handler import handle_webhook_payload
+from services.lid_resolver import LidResolver
 from services.roster import Roster
 from services.sheets_client import create_sheets_client
 
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
     sheets_client = create_sheets_client(Config.GOOGLE_SHEETS_ID, Config.GOOGLE_CREDENTIALS_PATH)
     app.state.sheets_client = sheets_client
     app.state.roster = Roster(sheets_client)
+    app.state.lid_resolver = LidResolver(Config.WHATSAPP_GROUP_JID)
     yield
 
 
@@ -36,6 +38,7 @@ async def webhook(request: Request):
         handle_webhook_payload(
             payload,
             request.app.state.roster,
+            request.app.state.lid_resolver,
             request.app.state.sheets_client,
             Config.WHATSAPP_GROUP_JID,
         )

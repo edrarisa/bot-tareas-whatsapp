@@ -13,16 +13,20 @@ from services.evolution import parse_webhook_payload, send_text_message
 logger = logging.getLogger(__name__)
 
 
-def handle_webhook_payload(payload: dict, roster, sheets_client, group_jid: str) -> None:
+def handle_webhook_payload(
+    payload: dict, roster, lid_resolver, sheets_client, group_jid: str
+) -> None:
     for message in parse_webhook_payload(payload):
-        _handle_message(message, roster, sheets_client, group_jid)
+        _handle_message(message, roster, lid_resolver, sheets_client, group_jid)
 
 
-def _handle_message(message, roster, sheets_client, group_jid: str) -> None:
+def _handle_message(message, roster, lid_resolver, sheets_client, group_jid: str) -> None:
     if message.from_me or message.group_jid != group_jid:
         return
 
-    if not roster.is_known_sender(message.sender_jid):
+    sender_jid = lid_resolver.resolve(message.sender_jid)
+
+    if not roster.is_known_sender(sender_jid):
         return
 
     today = datetime.now(ZoneInfo(Config.TIMEZONE)).date().isoformat()
@@ -30,22 +34,23 @@ def _handle_message(message, roster, sheets_client, group_jid: str) -> None:
     try:
         result = classify_message(message.text, today)
     except ClassifierError:
-        logger.exception("Classifier failed for message from %s", message.sender_jid)
+        logger.exception("Classifier failed for message from %s", sender_jid)
         return
 
     if not result.es_tarea:
         return
 
     assignee = "Sin asignar"
-    for jid in message.mentioned_jids:
-        if roster.same_person(jid, message.sender_jid):
+    for raw_jid in message.mentioned_jids:
+        jid = lid_resolver.resolve(raw_jid)
+        if roster.same_person(jid, sender_jid):
             continue
         name = roster.resolve_name(jid)
         if name:
             assignee = name
             break
 
-    reporter_name = roster.resolve_name(message.sender_jid) or message.sender_jid
+    reporter_name = roster.resolve_name(sender_jid) or sender_jid
 
     try:
         sheets_client.append_task(
