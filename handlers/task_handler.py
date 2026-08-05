@@ -32,7 +32,8 @@ def _handle_message(message, roster, lid_resolver, sheets_client, group_jid: str
     if not message.mentioned_jids:
         return
 
-    today = datetime.now(ZoneInfo(Config.TIMEZONE)).date().isoformat()
+    now = datetime.now(ZoneInfo(Config.TIMEZONE))
+    today = now.date().isoformat()
 
     try:
         result = classify_message(message.text, today)
@@ -67,7 +68,7 @@ def _handle_message(message, roster, lid_resolver, sheets_client, group_jid: str
 
     try:
         sheets_client.append_task(
-            created_at=today,
+            created_at=now.strftime("%Y-%m-%d %H:%M"),
             reporter=reporter_name,
             description=result.descripcion,
             assignee=assignee,

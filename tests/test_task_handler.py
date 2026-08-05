@@ -1,3 +1,5 @@
+import re
+
 from services.classifier import ClassificationResult, ClassifierError
 from handlers.task_handler import handle_webhook_payload
 
@@ -271,7 +273,11 @@ def test_ignores_classifier_errors_without_saving(monkeypatch):
     assert sheets_client.appended == []
 
 
-def test_today_is_computed_once_and_reused_for_classifier_and_sheets(monkeypatch):
+def test_created_at_and_classifier_date_share_the_same_moment(monkeypatch):
+    """created_at (date + time, for the Sheet) and the date passed to the
+    classifier (date only, for resolving 'mañana'/'el viernes') must come
+    from a single `datetime.now()` call, not two separate ones that could
+    disagree across a midnight boundary."""
     roster = FakeRoster({SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"})
     lid_resolver = FakeLidResolver()
     sheets_client = FakeSheetsClient()
@@ -293,7 +299,9 @@ def test_today_is_computed_once_and_reused_for_classifier_and_sheets(monkeypatch
         GROUP_JID,
     )
 
-    assert sheets_client.appended[0]["created_at"] == captured["classify_date"]
+    created_at = sheets_client.appended[0]["created_at"]
+    assert created_at.startswith(captured["classify_date"])
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", created_at)
 
 
 def test_today_is_computed_using_configured_timezone(monkeypatch):
