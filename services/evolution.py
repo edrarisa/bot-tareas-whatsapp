@@ -47,7 +47,7 @@ def _parse_message_item(item: dict) -> IncomingMessage | None:
     key = item.get("key") or {}
     group_jid = key.get("remoteJid")
     if not group_jid:
-        logger.info("Ignoring webhook payload with no 'remoteJid'")
+        logger.info("Ignoring webhook payload with no 'remoteJid'. Raw item: %s", repr(item)[:800])
         return None
 
     sender_jid = key.get("participant") or group_jid
@@ -62,7 +62,7 @@ def _parse_message_item(item: dict) -> IncomingMessage | None:
         mentioned_jids = (extended.get("contextInfo") or {}).get("mentionedJid") or []
 
     if not text:
-        logger.info("Ignoring webhook payload with no text content")
+        logger.info("Ignoring webhook payload with no text content. Raw item: %s", repr(item)[:800])
         return None
 
     return IncomingMessage(
