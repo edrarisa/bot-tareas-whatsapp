@@ -240,6 +240,36 @@ def test_today_is_computed_using_configured_timezone(monkeypatch):
     assert captured["classify_date"] == expected
 
 
+def test_processes_multiple_messages_in_one_payload(monkeypatch):
+    roster = FakeRoster({SENDER_JID: "Ana"})
+    sheets_client = FakeSheetsClient()
+    monkeypatch.setattr(
+        "handlers.task_handler.classify_message",
+        lambda text, date, **kw: ClassificationResult(
+            es_tarea=True, descripcion=text, fecha_limite=None
+        ),
+    )
+
+    payload = {
+        "data": [
+            {
+                "key": {"remoteJid": GROUP_JID, "participant": SENDER_JID, "fromMe": False},
+                "message": {"conversation": "primera tarea"},
+            },
+            {
+                "key": {"remoteJid": GROUP_JID, "participant": SENDER_JID, "fromMe": False},
+                "message": {"conversation": "segunda tarea"},
+            },
+        ]
+    }
+
+    handle_webhook_payload(payload, roster, sheets_client, GROUP_JID)
+
+    assert len(sheets_client.appended) == 2
+    assert sheets_client.appended[0]["description"] == "primera tarea"
+    assert sheets_client.appended[1]["description"] == "segunda tarea"
+
+
 def test_sends_warning_when_sheets_write_fails(monkeypatch):
     roster = FakeRoster({SENDER_JID: "Ana"})
     sheets_client = FakeSheetsClient(fail=True)

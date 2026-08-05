@@ -21,14 +21,30 @@ class IncomingMessage:
     from_me: bool
 
 
-def parse_webhook_payload(payload: dict) -> IncomingMessage | None:
-    """Returns None when the payload isn't a parseable text message."""
+def parse_webhook_payload(payload: dict) -> list[IncomingMessage]:
+    """Returns the parseable text messages found in the payload (possibly empty).
+
+    Evolution API's "data" field is sometimes a single message object and
+    sometimes a list of them (e.g. when several messages arrive in one
+    MESSAGES_UPSERT call) -- both shapes are handled here.
+    """
     data = payload.get("data")
     if not data:
         logger.info("Ignoring webhook payload with no 'data' field")
-        return None
+        return []
 
-    key = data.get("key") or {}
+    items = data if isinstance(data, list) else [data]
+
+    messages = []
+    for item in items:
+        message = _parse_message_item(item)
+        if message is not None:
+            messages.append(message)
+    return messages
+
+
+def _parse_message_item(item: dict) -> IncomingMessage | None:
+    key = item.get("key") or {}
     group_jid = key.get("remoteJid")
     if not group_jid:
         logger.info("Ignoring webhook payload with no 'remoteJid'")
@@ -37,7 +53,7 @@ def parse_webhook_payload(payload: dict) -> IncomingMessage | None:
     sender_jid = key.get("participant") or group_jid
     from_me = bool(key.get("fromMe", False))
 
-    message = data.get("message") or {}
+    message = item.get("message") or {}
     text = message.get("conversation")
     mentioned_jids: list[str] = []
     if text is None:

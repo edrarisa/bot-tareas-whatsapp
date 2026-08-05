@@ -14,8 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 def handle_webhook_payload(payload: dict, roster, sheets_client, group_jid: str) -> None:
-    message = parse_webhook_payload(payload)
-    if message is None or message.from_me or message.group_jid != group_jid:
+    for message in parse_webhook_payload(payload):
+        _handle_message(message, roster, sheets_client, group_jid)
+
+
+def _handle_message(message, roster, sheets_client, group_jid: str) -> None:
+    if message.from_me or message.group_jid != group_jid:
         return
 
     if not roster.is_known_sender(message.sender_jid):
