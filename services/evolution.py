@@ -65,6 +65,8 @@ def _parse_message_item(item: dict) -> IncomingMessage | None:
         logger.info("Ignoring webhook payload with no text content. Raw item: %s", repr(item)[:800])
         return None
 
+    logger.info("Parsed message. Raw 'message' object: %s", repr(message)[:800])
+
     return IncomingMessage(
         group_jid=group_jid,
         sender_jid=sender_jid,
