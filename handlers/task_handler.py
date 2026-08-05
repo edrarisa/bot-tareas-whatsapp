@@ -52,6 +52,16 @@ def _handle_message(message, roster, lid_resolver, sheets_client, group_jid: str
 
     reporter_name = roster.resolve_name(sender_jid) or sender_jid
 
+    logger.info(
+        "Task resolution: raw_sender=%s -> sender=%s (reporter=%s) | "
+        "raw_mentions=%s -> assignee=%s",
+        message.sender_jid,
+        sender_jid,
+        reporter_name,
+        message.mentioned_jids,
+        assignee,
+    )
+
     try:
         sheets_client.append_task(
             created_at=today,
