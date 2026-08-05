@@ -73,5 +73,5 @@ def review_spelling(
             raise ValueError("details must be a non-empty string")
         return SpellingReviewResult(has_errors=has_errors, details=details)
     except Exception as exc:
-        logger.warning(f"Spelling reviewer failed: {exc}")
+        logger.warning(f"Spelling reviewer failed: {str(exc)[:300]}")
         raise SpellingReviewError(str(exc)) from exc

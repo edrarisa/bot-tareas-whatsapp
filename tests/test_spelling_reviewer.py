@@ -118,3 +118,21 @@ def test_raises_error_when_details_is_missing_or_empty():
 
     with pytest.raises(SpellingReviewError):
         review_spelling("aGVsbG8=", "image/png", client=client)
+
+
+def test_truncates_long_exception_messages_in_logs(caplog):
+    long_message = "x" * 1000
+    client = FakeClient(raise_exc=RuntimeError(long_message))
+
+    with pytest.raises(SpellingReviewError) as exc_info:
+        review_spelling("aGVsbG8=", "image/png", client=client)
+
+    # Verify the full message is in the raised exception
+    assert len(str(exc_info.value)) == 1000
+    assert str(exc_info.value) == long_message
+
+    # Verify the logged message is truncated
+    assert len(caplog.records) > 0
+    logged_message = caplog.records[0].message
+    assert len(logged_message) < 500
+    assert "Spelling reviewer failed:" in logged_message
