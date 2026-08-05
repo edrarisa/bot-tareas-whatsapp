@@ -5,6 +5,7 @@ def _fake_response(status_code=200, json_data=None):
     class FakeResponse:
         def __init__(self):
             self.status_code = status_code
+            self.text = str(json_data)
 
         def raise_for_status(self):
             if self.status_code >= 400:
