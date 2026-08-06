@@ -38,8 +38,10 @@ def _handle_image_message(message, roster, lid_resolver, group_jid: str) -> None
 
     try:
         result = review_spelling(message.image_base64, message.mimetype)
-    except SpellingReviewError:
-        logger.exception("Spelling review failed for message from %s", sender_jid)
+    except SpellingReviewError as exc:
+        logger.error(
+            "Spelling review failed for message from %s: %s", sender_jid, str(exc)[:300]
+        )
         return
 
     if result.has_errors:

@@ -194,3 +194,25 @@ def test_ignores_review_errors_without_replying(monkeypatch):
     handle_webhook_payload(_payload("revisar ortografia"), roster, lid_resolver, GROUP_JID)
 
     assert sent == []
+
+
+def test_truncates_long_error_messages_in_logs(monkeypatch, caplog):
+    roster = FakeRoster({SENDER_JID: True})
+    lid_resolver = FakeLidResolver()
+
+    def raise_error(*a, **kw):
+        raise SpellingReviewError("x" * 1000)
+
+    monkeypatch.setattr("handlers.spelling_handler.review_spelling", raise_error)
+    sent = []
+    monkeypatch.setattr(
+        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+    )
+
+    with caplog.at_level("ERROR"):
+        handle_webhook_payload(_payload("revisar ortografia"), roster, lid_resolver, GROUP_JID)
+
+    assert sent == []
+    error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(error_records) == 1
+    assert len(error_records[0].message) < 500
