@@ -110,3 +110,28 @@ def test_webhook_returns_200_on_malformed_json_body(monkeypatch):
     assert response.status_code == 200
     assert task_calls == []
     assert spelling_calls == []
+
+
+def test_handlers_are_dispatched_via_threadpool(monkeypatch):
+    """Handlers do blocking I/O (OpenAI, Sheets, Evolution) -- they must run
+    off the event loop via run_in_threadpool, not be called directly."""
+    dispatched_funcs = []
+
+    async def fake_run_in_threadpool(func, *args):
+        dispatched_funcs.append(func)
+        return func(*args)
+
+    monkeypatch.setattr(main, "run_in_threadpool", fake_run_in_threadpool)
+    monkeypatch.setattr(main, "handle_task_payload", lambda *a: None)
+    monkeypatch.setattr(main, "handle_spelling_payload", lambda *a: None)
+    main.app.state.roster = "fake-roster"
+    main.app.state.lid_resolver = "fake-lid-resolver"
+    main.app.state.sheets_client = "fake-sheets-client"
+    monkeypatch.setattr(main.Config, "WHATSAPP_GROUP_JID", "120363429440515454@g.us")
+
+    client = TestClient(main.app)
+    response = client.post("/webhook", json={"event": "messages.upsert", "data": {}})
+
+    assert response.status_code == 200
+    assert main.handle_task_payload in dispatched_funcs
+    assert main.handle_spelling_payload in dispatched_funcs

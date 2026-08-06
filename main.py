@@ -2,12 +2,15 @@
 FastAPI app: receives Evolution API webhooks and hands each message to the
 task handler and the spelling-review handler. Google Sheets / roster clients
 are created lazily on startup so importing this module has no side effects
-(needed for testing).
+(needed for testing). Handlers run in a thread pool (not directly on the
+event loop) since they do blocking network I/O (OpenAI, Google Sheets,
+Evolution API).
 """
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from starlette.concurrency import run_in_threadpool
 
 from config import Config
 from handlers.spelling_handler import handle_webhook_payload as handle_spelling_payload
@@ -42,7 +45,8 @@ async def webhook(request: Request):
         return {"status": "ok"}
 
     try:
-        handle_task_payload(
+        await run_in_threadpool(
+            handle_task_payload,
             payload,
             request.app.state.roster,
             request.app.state.lid_resolver,
@@ -53,7 +57,8 @@ async def webhook(request: Request):
         logger.exception("Failed to process task webhook payload")
 
     try:
-        handle_spelling_payload(
+        await run_in_threadpool(
+            handle_spelling_payload,
             payload,
             request.app.state.roster,
             request.app.state.lid_resolver,
