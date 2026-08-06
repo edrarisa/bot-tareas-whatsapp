@@ -134,8 +134,11 @@ def _parse_image_item(item: dict) -> IncomingImageMessage | None:
     if not image_base64:
         logger.info(
             "Ignoring image message with no base64 content -- check that "
-            "'Webhook Base64' is enabled on the Evolution API instance. Raw item: %s",
-            repr(item)[:800],
+            "'Webhook Base64' is enabled on the Evolution API instance. "
+            "Top-level keys of item: %s. Keys of message: %s. Keys of imageMessage: %s",
+            list(item.keys()),
+            list(message.keys()),
+            list(image_message.keys()) if isinstance(image_message, dict) else repr(image_message)[:200],
         )
         return None
 
