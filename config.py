@@ -13,7 +13,6 @@ class Config:
     EVOLUTION_API_URL: str = os.getenv("EVOLUTION_API_URL", "")
     EVOLUTION_API_KEY: str = os.getenv("EVOLUTION_API_KEY", "")
     EVOLUTION_INSTANCE: str = os.getenv("EVOLUTION_INSTANCE", "")
-    WHATSAPP_GROUP_JID: str = os.getenv("WHATSAPP_GROUP_JID", "")
 
     # -- Google Sheets --
     GOOGLE_SHEETS_ID: str = os.getenv("GOOGLE_SHEETS_ID", "")
@@ -37,7 +36,6 @@ class Config:
             "EVOLUTION_API_URL": cls.EVOLUTION_API_URL,
             "EVOLUTION_API_KEY": cls.EVOLUTION_API_KEY,
             "EVOLUTION_INSTANCE": cls.EVOLUTION_INSTANCE,
-            "WHATSAPP_GROUP_JID": cls.WHATSAPP_GROUP_JID,
             "GOOGLE_SHEETS_ID": cls.GOOGLE_SHEETS_ID,
             "OPENAI_API_KEY": cls.OPENAI_API_KEY,
         }
