@@ -68,3 +68,23 @@ def test_raises_when_first_load_fails():
 
     with pytest.raises(ValueError, match="Sheets API error"):
         registry.get_client_name("120363429440515454@g.us")
+
+
+def test_duplicate_group_with_conflicting_client_logs_warning_and_uses_last(caplog):
+    sheets_client = FakeSheetsClient(
+        [
+            ("120363429440515454@g.us", "clinicachia"),
+            ("120363429440515454@g.us", "optifalcon"),
+        ]
+    )
+    registry = GroupRegistry(sheets_client)
+
+    with caplog.at_level("WARNING"):
+        result = registry.get_client_name("120363429440515454@g.us")
+
+    assert result == "optifalcon"
+    warning_records = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warning_records) == 1
+    assert "120363429440515454@g.us" in warning_records[0].message
+    assert "clinicachia" in warning_records[0].message
+    assert "optifalcon" in warning_records[0].message

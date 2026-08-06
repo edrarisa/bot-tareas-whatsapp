@@ -29,7 +29,20 @@ class GroupRegistry:
                 raise
             logger.warning("Failed to refresh group mapping, using stale cache", exc_info=True)
             return
-        self._by_group = {group_jid: client_name for group_jid, client_name in rows}
+        by_group: dict[str, str] = {}
+        for group_jid, client_name in rows:
+            existing = by_group.get(group_jid)
+            if existing is not None and existing != client_name:
+                logger.warning(
+                    "Duplicate group %s in Grupos tab with conflicting client names "
+                    "(%r and %r) -- using %r",
+                    group_jid,
+                    existing,
+                    client_name,
+                    client_name,
+                )
+            by_group[group_jid] = client_name
+        self._by_group = by_group
         self._loaded_at = now
 
     def get_client_name(self, group_jid: str) -> str | None:
