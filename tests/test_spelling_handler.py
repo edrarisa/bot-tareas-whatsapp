@@ -107,6 +107,23 @@ def test_ignores_image_without_keyword_in_caption(monkeypatch):
     _run(_payload("aqui esta el diseño final"), roster, lid_resolver)
 
 
+def test_u56_code_also_triggers_review(monkeypatch):
+    roster = FakeRoster({SENDER_JID: True})
+    lid_resolver = FakeLidResolver()
+    monkeypatch.setattr(
+        "handlers.spelling_handler.review_spelling",
+        lambda *a, **kw: SpellingReviewResult(has_errors=False, details=["Sin errores"]),
+    )
+    sent = []
+    monkeypatch.setattr(
+        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+    )
+
+    _run(_payload("u56"), roster, lid_resolver)
+
+    assert len(sent) == 1
+
+
 def test_keyword_matching_ignores_case_and_accents(monkeypatch):
     roster = FakeRoster({SENDER_JID: True})
     lid_resolver = FakeLidResolver()
@@ -317,6 +334,26 @@ def test_multiple_images_from_same_sender_are_batched_and_all_reviewed(monkeypat
 
     assert sorted(reviewed_images) == ["aW1hZ2Ux", "aW1hZ2Uy"]
     assert len(sent) == 2
+    assert any(text.startswith("Imagen 1 de 2:") for text in sent)
+    assert any(text.startswith("Imagen 2 de 2:") for text in sent)
+
+
+def test_single_image_reply_has_no_numbering_prefix(monkeypatch):
+    roster = FakeRoster({SENDER_JID: True})
+    lid_resolver = FakeLidResolver()
+    monkeypatch.setattr(
+        "handlers.spelling_handler.review_spelling",
+        lambda *a, **kw: SpellingReviewResult(has_errors=False, details=["Sin errores"]),
+    )
+    sent = []
+    monkeypatch.setattr(
+        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+    )
+
+    _run(_payload("revisar ortografia"), roster, lid_resolver)
+
+    assert len(sent) == 1
+    assert not sent[0].startswith("Imagen")
 
 
 def test_batch_without_keyword_in_any_image_is_ignored(monkeypatch):

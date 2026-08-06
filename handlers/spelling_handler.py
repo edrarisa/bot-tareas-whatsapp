@@ -2,8 +2,9 @@
 Orchestrates incoming image messages: parse -> filter (group, known
 sender, not from_me) -> buffer briefly so images sent together in one
 WhatsApp multi-image send are grouped -> if any image in the group has
-the "ortografia" keyword in its caption, review every image in the group
-with OpenAI -> reply in the group once per image.
+a trigger keyword in its caption, review every image in the group with
+OpenAI -> reply in the group once per image, numbered when the group
+has more than one image.
 
 WhatsApp delivers a multi-image send as separate messages (often as
 separate webhook calls), and typically only one of them carries the
@@ -21,7 +22,7 @@ from services.spelling_reviewer import SpellingReviewError, review_spelling
 
 logger = logging.getLogger(__name__)
 
-_KEYWORD = "ortografia"
+_KEYWORDS = ("ortografia", "u56")
 
 # How long to wait after an image arrives to see if sibling images from the
 # same sender show up before deciding whether to process the batch.
@@ -45,6 +46,11 @@ def _normalize(text: str) -> str:
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).lower()
 
 
+def _has_trigger_keyword(caption: str) -> bool:
+    normalized = _normalize(caption)
+    return any(keyword in normalized for keyword in _KEYWORDS)
+
+
 def _handle_image_message(
     message, roster, lid_resolver, group_jid: str, batch_buffer: ImageBatchBuffer, sleep
 ) -> None:
@@ -64,14 +70,15 @@ def _handle_image_message(
         # the whole group -- nothing to do here.
         return
 
-    if not any(_KEYWORD in _normalize(m.caption) for m in batch):
+    if not any(_has_trigger_keyword(m.caption) for m in batch):
         return
 
-    for image_message in batch:
-        _review_and_reply(image_message, group_jid)
+    total = len(batch)
+    for index, image_message in enumerate(batch, start=1):
+        _review_and_reply(image_message, group_jid, index, total)
 
 
-def _review_and_reply(message, group_jid: str) -> None:
+def _review_and_reply(message, group_jid: str, index: int, total: int) -> None:
     try:
         result = review_spelling(message.image_base64, message.mimetype)
     except SpellingReviewError as exc:
@@ -84,8 +91,10 @@ def _review_and_reply(message, group_jid: str) -> None:
 
     if result.has_errors:
         bullets = "\n".join(f"• {item}" for item in result.details)
-        reply = f"⚠️ Encontré posibles errores de ortografía:\n{bullets}"
+        body = f"⚠️ Encontré posibles errores de ortografía:\n{bullets}"
     else:
-        reply = "✅ Ortografía revisada, no encontré errores."
+        body = "✅ Ortografía revisada, no encontré errores."
+
+    reply = f"Imagen {index} de {total}:\n{body}" if total > 1 else body
 
     send_text_message(group_jid, reply)
