@@ -316,9 +316,9 @@ def test_parses_image_message_with_caption_and_base64():
                 "fromMe": False,
             },
             "message": {
-                "imageMessage": {"caption": "revisar ortografía porfa", "mimetype": "image/png"}
+                "imageMessage": {"caption": "revisar ortografía porfa", "mimetype": "image/png"},
+                "base64": "aGVsbG8=",
             },
-            "base64": "aGVsbG8=",
         }
     }
     messages = parse_image_messages(payload)
@@ -336,8 +336,7 @@ def test_defaults_mimetype_when_missing():
     payload = {
         "data": {
             "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
-            "message": {"imageMessage": {"caption": "ortografia"}},
-            "base64": "aGVsbG8=",
+            "message": {"imageMessage": {"caption": "ortografia"}, "base64": "aGVsbG8="},
         }
     }
     messages = parse_image_messages(payload)
@@ -348,8 +347,7 @@ def test_defaults_caption_to_empty_string_when_missing():
     payload = {
         "data": {
             "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
-            "message": {"imageMessage": {}},
-            "base64": "aGVsbG8=",
+            "message": {"imageMessage": {}, "base64": "aGVsbG8="},
         }
     }
     messages = parse_image_messages(payload)
@@ -370,8 +368,7 @@ def test_returns_empty_list_when_no_image_message():
     payload = {
         "data": {
             "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
-            "message": {"conversation": "hola"},
-            "base64": "aGVsbG8=",
+            "message": {"conversation": "hola", "base64": "aGVsbG8="},
         }
     }
     assert parse_image_messages(payload) == []
@@ -381,8 +378,7 @@ def test_returns_empty_list_when_no_remote_jid():
     payload = {
         "data": {
             "key": {},
-            "message": {"imageMessage": {"caption": "ortografia"}},
-            "base64": "aGVsbG8=",
+            "message": {"imageMessage": {"caption": "ortografia"}, "base64": "aGVsbG8="},
         }
     }
     assert parse_image_messages(payload) == []
@@ -393,13 +389,11 @@ def test_parses_image_data_as_a_list():
         "data": [
             {
                 "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
-                "message": {"imageMessage": {"caption": "ortografia 1"}},
-                "base64": "aGVsbG8=",
+                "message": {"imageMessage": {"caption": "ortografia 1"}, "base64": "aGVsbG8="},
             },
             {
                 "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
-                "message": {"imageMessage": {"caption": "ortografia 2"}},
-                "base64": "d29ybGQ=",
+                "message": {"imageMessage": {"caption": "ortografia 2"}, "base64": "d29ybGQ="},
             },
         ]
     }
@@ -413,8 +407,7 @@ def test_handles_explicit_null_key_for_images():
     payload = {
         "data": {
             "key": None,
-            "message": {"imageMessage": {"caption": "ortografia"}},
-            "base64": "aGVsbG8=",
+            "message": {"imageMessage": {"caption": "ortografia"}, "base64": "aGVsbG8="},
         }
     }
     assert parse_image_messages(payload) == []
@@ -425,7 +418,6 @@ def test_handles_explicit_null_message_for_images():
         "data": {
             "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
             "message": None,
-            "base64": "aGVsbG8=",
         }
     }
     assert parse_image_messages(payload) == []
@@ -434,11 +426,10 @@ def test_handles_explicit_null_message_for_images():
 def test_skips_unparseable_image_items_in_a_list_but_keeps_the_rest():
     payload = {
         "data": [
-            {"key": {}, "message": {"imageMessage": {"caption": "sin remoteJid"}}, "base64": "aGk="},
+            {"key": {}, "message": {"imageMessage": {"caption": "sin remoteJid"}, "base64": "aGk="}},
             {
                 "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
-                "message": {"imageMessage": {"caption": "este si sirve"}},
-                "base64": "aGk=",
+                "message": {"imageMessage": {"caption": "este si sirve"}, "base64": "aGk="},
             },
         ]
     }

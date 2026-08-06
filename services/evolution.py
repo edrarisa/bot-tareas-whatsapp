@@ -130,7 +130,7 @@ def _parse_image_item(item: dict) -> IncomingImageMessage | None:
     if image_message is None:
         return None
 
-    image_base64 = item.get("base64")
+    image_base64 = message.get("base64")
     if not image_base64:
         logger.info(
             "Ignoring image message with no base64 content -- check that "

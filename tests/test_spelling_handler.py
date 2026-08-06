@@ -26,8 +26,7 @@ def _payload(caption, sender_jid=SENDER_JID, group_jid=GROUP_JID, from_me=False,
     return {
         "data": {
             "key": {"remoteJid": group_jid, "participant": sender_jid, "fromMe": from_me},
-            "message": {"imageMessage": {"caption": caption}},
-            "base64": base64,
+            "message": {"imageMessage": {"caption": caption}, "base64": base64},
         }
     }
 
