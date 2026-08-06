@@ -35,6 +35,9 @@ class SpellingReviewResult:
 SYSTEM_PROMPT = """Eres un corrector ortográfico en español. Analiza el texto visible en la \
 imagen y revisa si tiene errores de ortografía.
 
+Revisa cada palabra del texto una por una, con cuidado, sin saltarte ninguna -- es importante \
+encontrar TODOS los errores de ortografía presentes, no solo los más evidentes.
+
 Devuelve SIEMPRE un JSON con estas claves, sin texto adicional:
 - "has_errors": true si encontraste al menos un error de ortografía, false si no.
 - "details": si has_errors es true, describe cada error encontrado (la palabra mal escrita y \
@@ -48,7 +51,7 @@ def review_spelling(
     active_client = client or _get_client()
     try:
         response = active_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             response_format={"type": "json_object"},
             timeout=30,
             messages=[
