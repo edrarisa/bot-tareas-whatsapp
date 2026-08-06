@@ -1,16 +1,17 @@
 """
-Orchestrates incoming image messages: parse -> filter (group, known
-sender, not from_me) -> buffer briefly so images sent together in one
-WhatsApp multi-image send are grouped -> if any image in the group has
-a trigger keyword in its caption, review every image in the group with
-OpenAI -> reply in the group once per image, numbered when the group
-has more than one image.
+Orchestrates incoming image messages: parse -> filter (group registered,
+known sender, not from_me) -> buffer briefly so images sent together in one
+WhatsApp multi-image send are grouped -> if any image in the group has a
+trigger keyword in its caption, review every image in the group with
+OpenAI -> reply in the group once per image, numbered when the group has
+more than one image.
 
 WhatsApp delivers a multi-image send as separate messages (often as
 separate webhook calls), and typically only one of them carries the
 caption text -- the rest arrive with no caption at all. The batch buffer
 exists to catch those caption-less siblings instead of silently ignoring
-them.
+them. Batches are keyed by (sender, group) so images sent to two
+different client groups around the same time never mix into one batch.
 """
 import logging
 import time
@@ -33,12 +34,12 @@ def handle_webhook_payload(
     payload: dict,
     roster,
     lid_resolver,
-    group_jid: str,
+    group_registry,
     batch_buffer: ImageBatchBuffer,
     sleep=time.sleep,
 ) -> None:
     for message in parse_image_messages(payload):
-        _handle_image_message(message, roster, lid_resolver, group_jid, batch_buffer, sleep)
+        _handle_image_message(message, roster, lid_resolver, group_registry, batch_buffer, sleep)
 
 
 def _normalize(text: str) -> str:
@@ -52,19 +53,23 @@ def _has_trigger_keyword(caption: str) -> bool:
 
 
 def _handle_image_message(
-    message, roster, lid_resolver, group_jid: str, batch_buffer: ImageBatchBuffer, sleep
+    message, roster, lid_resolver, group_registry, batch_buffer: ImageBatchBuffer, sleep
 ) -> None:
-    if message.from_me or message.group_jid != group_jid:
+    if message.from_me:
         return
 
-    sender_jid = lid_resolver.resolve(message.sender_jid)
+    if group_registry.get_client_name(message.group_jid) is None:
+        return
+
+    sender_jid = lid_resolver.resolve(message.sender_jid, message.group_jid)
 
     if not roster.is_known_sender(sender_jid):
         return
 
-    snapshot = batch_buffer.add(sender_jid, message)
+    batch_key = (sender_jid, message.group_jid)
+    snapshot = batch_buffer.add(batch_key, message)
     sleep(_BATCH_WINDOW_SECONDS)
-    batch = batch_buffer.try_claim(sender_jid, len(snapshot))
+    batch = batch_buffer.try_claim(batch_key, len(snapshot))
     if batch is None:
         # A later image in the same batch is responsible for processing
         # the whole group -- nothing to do here.
@@ -75,10 +80,10 @@ def _handle_image_message(
 
     total = len(batch)
     for index, image_message in enumerate(batch, start=1):
-        _review_and_reply(image_message, group_jid, index, total)
+        _review_and_reply(image_message, index, total)
 
 
-def _review_and_reply(message, group_jid: str, index: int, total: int) -> None:
+def _review_and_reply(message, index: int, total: int) -> None:
     try:
         result = review_spelling(message.image_base64, message.mimetype)
     except SpellingReviewError as exc:
@@ -97,4 +102,4 @@ def _review_and_reply(message, group_jid: str, index: int, total: int) -> None:
 
     reply = f"Imagen {index} de {total}:\n{body}" if total > 1 else body
 
-    send_text_message(group_jid, reply)
+    send_text_message(message.group_jid, reply)

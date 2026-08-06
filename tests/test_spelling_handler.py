@@ -21,8 +21,16 @@ class FakeLidResolver:
     def __init__(self, mapping=None):
         self._mapping = mapping or {}
 
-    def resolve(self, jid):
+    def resolve(self, jid, group_jid):
         return self._mapping.get(jid, jid)
+
+
+class FakeGroupRegistry:
+    def __init__(self, mapping):
+        self._mapping = mapping
+
+    def get_client_name(self, group_jid):
+        return self._mapping.get(group_jid)
 
 
 def _payload(caption, sender_jid=SENDER_JID, group_jid=GROUP_JID, from_me=False, base64="aGk="):
@@ -34,14 +42,14 @@ def _payload(caption, sender_jid=SENDER_JID, group_jid=GROUP_JID, from_me=False,
     }
 
 
-def _run(payload, roster, lid_resolver, group_jid=GROUP_JID, batch_buffer=None):
+def _run(payload, roster, lid_resolver, group_registry=None, batch_buffer=None):
     """Runs the handler for a single image with no real waiting -- used by
     tests that don't care about batching multiple images together."""
     handle_webhook_payload(
         payload,
         roster,
         lid_resolver,
-        group_jid,
+        group_registry or FakeGroupRegistry({GROUP_JID: "clinicachia"}),
         batch_buffer or ImageBatchBuffer(),
         sleep=lambda seconds: None,
     )
@@ -58,9 +66,10 @@ def test_ignores_image_from_unknown_sender(monkeypatch):
     _run(_payload("revisar ortografia"), roster, lid_resolver)
 
 
-def test_ignores_image_from_other_group(monkeypatch):
+def test_ignores_image_from_unmapped_group(monkeypatch):
     roster = FakeRoster({SENDER_JID: True})
     lid_resolver = FakeLidResolver()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
     monkeypatch.setattr(
         "handlers.spelling_handler.review_spelling",
         lambda *a, **kw: (_ for _ in ()).throw(AssertionError("should not review")),
@@ -74,6 +83,7 @@ def test_ignores_image_from_other_group(monkeypatch):
         _payload("revisar ortografia", group_jid=OTHER_GROUP_JID),
         roster,
         lid_resolver,
+        group_registry,
     )
 
     assert sent == []
@@ -251,6 +261,7 @@ def test_waits_before_deciding_whether_to_process(monkeypatch):
     sibling image sent milliseconds later has a chance to join the batch."""
     roster = FakeRoster({SENDER_JID: True})
     lid_resolver = FakeLidResolver()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
     monkeypatch.setattr(
         "handlers.spelling_handler.review_spelling",
         lambda *a, **kw: SpellingReviewResult(has_errors=False, details=["Sin errores"]),
@@ -263,7 +274,7 @@ def test_waits_before_deciding_whether_to_process(monkeypatch):
         _payload("revisar ortografia"),
         roster,
         lid_resolver,
-        GROUP_JID,
+        group_registry,
         ImageBatchBuffer(),
         sleep=lambda seconds: sleep_calls.append(seconds),
     )
@@ -278,6 +289,7 @@ def test_multiple_images_from_same_sender_are_batched_and_all_reviewed(monkeypat
     -- including the ones with no caption at all."""
     roster = FakeRoster({SENDER_JID: True})
     lid_resolver = FakeLidResolver()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
 
     reviewed_images = []
 
@@ -310,7 +322,7 @@ def test_multiple_images_from_same_sender_are_batched_and_all_reviewed(monkeypat
             payload_1,
             roster,
             lid_resolver,
-            GROUP_JID,
+            group_registry,
             batch_buffer,
             sleep_and_wait_for_sibling,
         ),
@@ -324,7 +336,7 @@ def test_multiple_images_from_same_sender_are_batched_and_all_reviewed(monkeypat
         payload_2,
         roster,
         lid_resolver,
-        GROUP_JID,
+        group_registry,
         batch_buffer,
         sleep=lambda seconds: None,
     )
@@ -359,6 +371,7 @@ def test_single_image_reply_has_no_numbering_prefix(monkeypatch):
 def test_batch_without_keyword_in_any_image_is_ignored(monkeypatch):
     roster = FakeRoster({SENDER_JID: True})
     lid_resolver = FakeLidResolver()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
     monkeypatch.setattr(
         "handlers.spelling_handler.review_spelling",
         lambda *a, **kw: (_ for _ in ()).throw(AssertionError("should not review")),
@@ -385,7 +398,7 @@ def test_batch_without_keyword_in_any_image_is_ignored(monkeypatch):
             payload_1,
             roster,
             lid_resolver,
-            GROUP_JID,
+            group_registry,
             batch_buffer,
             sleep_and_wait_for_sibling,
         ),
@@ -397,7 +410,7 @@ def test_batch_without_keyword_in_any_image_is_ignored(monkeypatch):
         payload_2,
         roster,
         lid_resolver,
-        GROUP_JID,
+        group_registry,
         batch_buffer,
         sleep=lambda seconds: None,
     )
@@ -406,3 +419,70 @@ def test_batch_without_keyword_in_any_image_is_ignored(monkeypatch):
     first_call.join(timeout=2)
 
     assert sent == []
+
+
+def test_images_from_the_same_sender_in_different_groups_are_not_batched_together(monkeypatch):
+    """The batch key must include the group, not just the sender -- two
+    images sent to two different client groups around the same time must
+    never be merged into one batch."""
+    roster = FakeRoster({SENDER_JID: True})
+    lid_resolver = FakeLidResolver()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia", OTHER_GROUP_JID: "optifalcon"})
+
+    reviewed_images = []
+
+    def fake_review(image_base64, mimetype, **kw):
+        reviewed_images.append(image_base64)
+        return SpellingReviewResult(has_errors=False, details=["Sin errores"])
+
+    monkeypatch.setattr("handlers.spelling_handler.review_spelling", fake_review)
+    sent = []
+    monkeypatch.setattr(
+        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append((g, t))
+    )
+
+    batch_buffer = ImageBatchBuffer()
+    added_first_image = threading.Event()
+    release_first_image = threading.Event()
+
+    def sleep_and_wait_for_sibling(seconds):
+        added_first_image.set()
+        release_first_image.wait(timeout=2)
+
+    payload_group_a = _payload("revisar ortografia", group_jid=GROUP_JID, base64="aW1hZ2Ux")
+    payload_group_b = _payload("revisar ortografia", group_jid=OTHER_GROUP_JID, base64="aW1hZ2Uy")
+
+    first_call = threading.Thread(
+        target=handle_webhook_payload,
+        args=(
+            payload_group_a,
+            roster,
+            lid_resolver,
+            group_registry,
+            batch_buffer,
+            sleep_and_wait_for_sibling,
+        ),
+    )
+    first_call.start()
+    assert added_first_image.wait(timeout=2)
+
+    handle_webhook_payload(
+        payload_group_b,
+        roster,
+        lid_resolver,
+        group_registry,
+        batch_buffer,
+        sleep=lambda seconds: None,
+    )
+
+    release_first_image.set()
+    first_call.join(timeout=2)
+
+    # Each image was reviewed as its own batch of one -- neither reply is
+    # numbered, and each was sent to its own group.
+    assert sorted(reviewed_images) == ["aW1hZ2Ux", "aW1hZ2Uy"]
+    assert len(sent) == 2
+    for group_jid, text in sent:
+        assert not text.startswith("Imagen")
+    sent_groups = {g for g, _ in sent}
+    assert sent_groups == {GROUP_JID, OTHER_GROUP_JID}
