@@ -95,7 +95,7 @@ def test_sends_expected_request_to_openai():
     classify_message("Some message", "2026-07-23", client=client)
 
     kwargs = client.chat.completions.last_call_kwargs
-    assert kwargs["model"] == "gpt-4o-mini"
+    assert kwargs["model"] == "gpt-5.6-terra"
     assert kwargs["response_format"] == {"type": "json_object"}
     assert kwargs["timeout"] == 30
     system_message_content = kwargs["messages"][0]["content"]

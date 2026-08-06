@@ -51,7 +51,7 @@ def review_spelling(
     active_client = client or _get_client()
     try:
         response = active_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.6-sol",
             response_format={"type": "json_object"},
             timeout=30,
             messages=[

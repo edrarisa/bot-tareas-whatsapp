@@ -52,7 +52,7 @@ def classify_message(
     active_client = client or _get_client()
     try:
         response = active_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5.6-terra",
             response_format={"type": "json_object"},
             timeout=30,
             messages=[

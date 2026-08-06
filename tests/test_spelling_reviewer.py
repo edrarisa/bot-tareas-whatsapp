@@ -76,7 +76,7 @@ def test_sends_image_as_data_url_to_openai():
     review_spelling("aGVsbG8=", "image/png", client=client)
 
     kwargs = client.chat.completions.last_call_kwargs
-    assert kwargs["model"] == "gpt-4o"
+    assert kwargs["model"] == "gpt-5.6-sol"
     assert kwargs["response_format"] == {"type": "json_object"}
     assert kwargs["timeout"] == 30
     user_message = kwargs["messages"][1]
