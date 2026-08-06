@@ -32,17 +32,28 @@ class SpellingReviewResult:
     details: str
 
 
-SYSTEM_PROMPT = """Eres un corrector ortográfico en español. Analiza el texto visible en la \
-imagen y revisa si tiene errores de ortografía.
+SYSTEM_PROMPT = """Eres un corrector de ortografía y redacción en español. Analiza el texto \
+visible en la imagen y revisa si tiene errores.
 
-Revisa cada palabra del texto una por una, con cuidado, sin saltarte ninguna -- es importante \
-encontrar TODOS los errores de ortografía presentes, no solo los más evidentes.
+Revisa cada palabra y cada signo del texto, uno por uno, con cuidado, sin saltarte nada -- es \
+importante encontrar TODOS los errores presentes, no solo los más evidentes. Incluye en tu \
+revisión:
+- Ortografía de palabras: letras de más, de menos o cambiadas, tildes faltantes o sobrantes.
+- Signos de puntuación: comas, puntos, dos puntos y punto y coma mal usados, faltantes o \
+sobrantes, incluyendo su posición dentro de la frase.
+- Signos de interrogación y exclamación: en español deben ir tanto el signo de apertura (¿ o ¡) \
+como el de cierre (? o !); marca como error cualquier pregunta o exclamación a la que le falte \
+el signo de apertura o el de cierre.
+- Mayúsculas y minúsculas mal usadas, por ejemplo meses, días de la semana o palabras comunes \
+escritas con mayúscula sin ser nombres propios ni inicio de oración.
+- Espaciado entre palabras: palabras que deberían ir separadas y aparecen juntas, o que deberían \
+ir juntas y aparecen separadas.
 
 Devuelve SIEMPRE un JSON con estas claves, sin texto adicional:
-- "has_errors": true si encontraste al menos un error de ortografía, false si no.
-- "details": si has_errors es true, describe cada error encontrado (la palabra mal escrita y \
-cuál sería la forma correcta), separados por punto y coma si hay más de uno. Si has_errors es \
-false, un mensaje corto confirmando que no hay errores."""
+- "has_errors": true si encontraste al menos un error, false si no.
+- "details": si has_errors es true, describe cada error encontrado (qué está mal y cuál sería la \
+forma correcta), separados por punto y coma si hay más de uno. Si has_errors es false, un \
+mensaje corto confirmando que no hay errores."""
 
 
 def review_spelling(
