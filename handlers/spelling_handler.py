@@ -45,7 +45,8 @@ def _handle_image_message(message, roster, lid_resolver, group_jid: str) -> None
         return
 
     if result.has_errors:
-        reply = f"⚠️ Encontré posibles errores de ortografía: {result.details}"
+        bullets = "\n".join(f"• {item}" for item in result.details)
+        reply = f"⚠️ Encontré posibles errores de ortografía:\n{bullets}"
     else:
         reply = "✅ Ortografía revisada, no encontré errores."
 

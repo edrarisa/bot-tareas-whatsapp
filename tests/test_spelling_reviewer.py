@@ -49,19 +49,39 @@ class FakeResponse:
 
 def test_detects_spelling_errors():
     content = json.dumps(
-        {"has_errors": True, "details": "'campana' deberia ser 'campaña'"}
+        {"has_errors": True, "details": ["'campana' deberia ser 'campaña'"]}
     )
     client = FakeClient(content=content)
 
     result = review_spelling("aGVsbG8=", "image/png", client=client)
 
     assert result == SpellingReviewResult(
-        has_errors=True, details="'campana' deberia ser 'campaña'"
+        has_errors=True, details=["'campana' deberia ser 'campaña'"]
     )
 
 
+def test_detects_multiple_spelling_errors_as_separate_items():
+    content = json.dumps(
+        {
+            "has_errors": True,
+            "details": [
+                "'campana' deberia ser 'campaña'",
+                "Falta el signo de apertura '¡' en la exclamación",
+            ],
+        }
+    )
+    client = FakeClient(content=content)
+
+    result = review_spelling("aGVsbG8=", "image/png", client=client)
+
+    assert result.details == [
+        "'campana' deberia ser 'campaña'",
+        "Falta el signo de apertura '¡' en la exclamación",
+    ]
+
+
 def test_confirms_no_errors():
-    content = json.dumps({"has_errors": False, "details": "Sin errores detectados"})
+    content = json.dumps({"has_errors": False, "details": ["Sin errores detectados"]})
     client = FakeClient(content=content)
 
     result = review_spelling("aGVsbG8=", "image/png", client=client)
@@ -70,7 +90,7 @@ def test_confirms_no_errors():
 
 
 def test_sends_image_as_data_url_to_openai():
-    content = json.dumps({"has_errors": False, "details": "Sin errores"})
+    content = json.dumps({"has_errors": False, "details": ["Sin errores"]})
     client = FakeClient(content=content)
 
     review_spelling("aGVsbG8=", "image/png", client=client)
@@ -114,7 +134,25 @@ def test_raises_error_when_has_errors_is_not_a_bool():
 
 
 def test_raises_error_when_details_is_missing_or_empty():
-    client = FakeClient(content=json.dumps({"has_errors": False, "details": ""}))
+    client = FakeClient(content=json.dumps({"has_errors": False, "details": []}))
+
+    with pytest.raises(SpellingReviewError):
+        review_spelling("aGVsbG8=", "image/png", client=client)
+
+
+def test_raises_error_when_details_is_not_a_list():
+    client = FakeClient(
+        content=json.dumps({"has_errors": False, "details": "Sin errores"})
+    )
+
+    with pytest.raises(SpellingReviewError):
+        review_spelling("aGVsbG8=", "image/png", client=client)
+
+
+def test_raises_error_when_details_contains_empty_strings():
+    client = FakeClient(
+        content=json.dumps({"has_errors": True, "details": ["algo mal", ""]})
+    )
 
     with pytest.raises(SpellingReviewError):
         review_spelling("aGVsbG8=", "image/png", client=client)

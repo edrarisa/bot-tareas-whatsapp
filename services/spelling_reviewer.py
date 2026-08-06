@@ -29,7 +29,7 @@ class SpellingReviewError(Exception):
 @dataclass
 class SpellingReviewResult:
     has_errors: bool
-    details: str
+    details: list[str]
 
 
 SYSTEM_PROMPT = """Eres un corrector de ortografía y redacción en español. Analiza el texto \
@@ -51,9 +51,10 @@ ir juntas y aparecen separadas.
 
 Devuelve SIEMPRE un JSON con estas claves, sin texto adicional:
 - "has_errors": true si encontraste al menos un error, false si no.
-- "details": si has_errors es true, describe cada error encontrado (qué está mal y cuál sería la \
-forma correcta), separados por punto y coma si hay más de uno. Si has_errors es false, un \
-mensaje corto confirmando que no hay errores."""
+- "details": una lista (array) de strings. Si has_errors es true, cada elemento de la lista \
+describe UN solo error (qué está mal y cuál sería la forma correcta) -- un elemento por error, \
+no los combines en un solo texto. Si has_errors es false, una lista con un único mensaje corto \
+confirmando que no hay errores."""
 
 
 def review_spelling(
@@ -83,8 +84,10 @@ def review_spelling(
         details = data["details"]
         if not isinstance(has_errors, bool):
             raise ValueError(f"has_errors must be a bool, got {type(has_errors).__name__}")
-        if not isinstance(details, str) or not details:
-            raise ValueError("details must be a non-empty string")
+        if not isinstance(details, list) or not details:
+            raise ValueError("details must be a non-empty list of strings")
+        if not all(isinstance(item, str) and item for item in details):
+            raise ValueError("details must contain only non-empty strings")
         return SpellingReviewResult(has_errors=has_errors, details=details)
     except Exception as exc:
         logger.warning(f"Spelling reviewer failed: {str(exc)[:300]}")

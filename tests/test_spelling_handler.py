@@ -101,7 +101,7 @@ def test_keyword_matching_ignores_case_and_accents(monkeypatch):
     lid_resolver = FakeLidResolver()
     monkeypatch.setattr(
         "handlers.spelling_handler.review_spelling",
-        lambda *a, **kw: SpellingReviewResult(has_errors=False, details="Sin errores"),
+        lambda *a, **kw: SpellingReviewResult(has_errors=False, details=["Sin errores"]),
     )
     sent = []
     monkeypatch.setattr(
@@ -121,7 +121,7 @@ def test_resolves_lid_sender_before_matching_roster(monkeypatch):
     lid_resolver = FakeLidResolver({sender_lid: SENDER_JID})
     monkeypatch.setattr(
         "handlers.spelling_handler.review_spelling",
-        lambda *a, **kw: SpellingReviewResult(has_errors=False, details="Sin errores"),
+        lambda *a, **kw: SpellingReviewResult(has_errors=False, details=["Sin errores"]),
     )
     sent = []
     monkeypatch.setattr(
@@ -141,7 +141,11 @@ def test_replies_with_errors_when_found(monkeypatch):
     monkeypatch.setattr(
         "handlers.spelling_handler.review_spelling",
         lambda *a, **kw: SpellingReviewResult(
-            has_errors=True, details="'campana' deberia ser 'campaña'"
+            has_errors=True,
+            details=[
+                "'campana' deberia ser 'campaña'",
+                "Falta el signo de apertura '¡'",
+            ],
         ),
     )
     sent = []
@@ -156,7 +160,8 @@ def test_replies_with_errors_when_found(monkeypatch):
     group_jid, text = sent[0]
     assert group_jid == GROUP_JID
     assert "posibles errores" in text.lower()
-    assert "campana" in text
+    assert "• 'campana' deberia ser 'campaña'" in text
+    assert "• Falta el signo de apertura '¡'" in text
 
 
 def test_replies_confirming_no_errors(monkeypatch):
@@ -164,7 +169,7 @@ def test_replies_confirming_no_errors(monkeypatch):
     lid_resolver = FakeLidResolver()
     monkeypatch.setattr(
         "handlers.spelling_handler.review_spelling",
-        lambda *a, **kw: SpellingReviewResult(has_errors=False, details="Sin errores"),
+        lambda *a, **kw: SpellingReviewResult(has_errors=False, details=["Sin errores"]),
     )
     sent = []
     monkeypatch.setattr(
