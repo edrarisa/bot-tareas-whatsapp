@@ -10,14 +10,18 @@ ASSIGNEE_JID = "573004445566@s.whatsapp.net"
 
 
 class FakeRoster:
-    def __init__(self, known_jids: dict[str, str]):
+    def __init__(self, known_jids: dict[str, str], sheet_ids: dict[str, str] | None = None):
         self._known = known_jids
+        self._sheet_ids = sheet_ids or {}
 
     def is_known_sender(self, jid):
         return jid in self._known
 
     def resolve_name(self, jid):
         return self._known.get(jid)
+
+    def resolve_personal_sheet_id(self, jid):
+        return self._sheet_ids.get(jid)
 
     def same_person(self, jid_a, jid_b):
         return jid_a == jid_b
@@ -30,11 +34,19 @@ class FakeLidResolver:
     def __init__(self, mapping: dict[str, str] | None = None):
         self._mapping = mapping or {}
 
-    def resolve(self, jid):
+    def resolve(self, jid, group_jid):
         return self._mapping.get(jid, jid)
 
 
-class FakeSheetsClient:
+class FakeGroupRegistry:
+    def __init__(self, mapping: dict[str, str]):
+        self._mapping = mapping
+
+    def get_client_name(self, group_jid):
+        return self._mapping.get(group_jid)
+
+
+class FakePersonalTaskWriter:
     def __init__(self, fail=False):
         self.fail = fail
         self.appended = []
@@ -64,51 +76,58 @@ def _payload(text, sender_jid=SENDER_JID, mentioned_jids=None, group_jid=GROUP_J
 def test_ignores_message_from_unknown_sender(monkeypatch):
     roster = FakeRoster({})
     lid_resolver = FakeLidResolver()
-    sheets_client = FakeSheetsClient()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
     monkeypatch.setattr(
         "handlers.task_handler.classify_message",
         lambda text, date, **kw: (_ for _ in ()).throw(AssertionError("should not classify")),
     )
 
     handle_webhook_payload(
-        _payload("Cristian revisa el stand"), roster, lid_resolver, sheets_client, GROUP_JID
+        _payload("Cristian revisa el stand"), roster, lid_resolver, group_registry, task_writer
     )
 
-    assert sheets_client.appended == []
+    assert task_writer.appended == []
 
 
-def test_ignores_message_from_other_group(monkeypatch):
-    roster = FakeRoster({SENDER_JID: "Ana"})
+def test_ignores_message_from_unmapped_group(monkeypatch):
+    roster = FakeRoster({SENDER_JID: "Ana"}, {SENDER_JID: "sheet-ana"})
     lid_resolver = FakeLidResolver()
-    sheets_client = FakeSheetsClient()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
 
     handle_webhook_payload(
         _payload("Cristian revisa el stand", group_jid=OTHER_GROUP_JID),
         roster,
         lid_resolver,
-        sheets_client,
-        GROUP_JID,
+        group_registry,
+        task_writer,
     )
 
-    assert sheets_client.appended == []
+    assert task_writer.appended == []
 
 
 def test_ignores_own_messages(monkeypatch):
-    roster = FakeRoster({SENDER_JID: "Ana"})
+    roster = FakeRoster({SENDER_JID: "Ana"}, {SENDER_JID: "sheet-ana"})
     lid_resolver = FakeLidResolver()
-    sheets_client = FakeSheetsClient()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
 
     handle_webhook_payload(
-        _payload("aviso de error", from_me=True), roster, lid_resolver, sheets_client, GROUP_JID
+        _payload("aviso de error", from_me=True), roster, lid_resolver, group_registry, task_writer
     )
 
-    assert sheets_client.appended == []
+    assert task_writer.appended == []
 
 
 def test_ignores_non_task_message(monkeypatch):
-    roster = FakeRoster({SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"})
+    roster = FakeRoster(
+        {SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"},
+        {ASSIGNEE_JID: "sheet-cristian"},
+    )
     lid_resolver = FakeLidResolver()
-    sheets_client = FakeSheetsClient()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
     monkeypatch.setattr(
         "handlers.task_handler.classify_message",
         lambda text, date, **kw: ClassificationResult(
@@ -120,17 +139,21 @@ def test_ignores_non_task_message(monkeypatch):
         _payload("jajaja buenísimo @Cristian", mentioned_jids=[ASSIGNEE_JID]),
         roster,
         lid_resolver,
-        sheets_client,
-        GROUP_JID,
+        group_registry,
+        task_writer,
     )
 
-    assert sheets_client.appended == []
+    assert task_writer.appended == []
 
 
-def test_saves_task_with_assignee_from_mention(monkeypatch):
-    roster = FakeRoster({SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"})
+def test_saves_task_to_assignees_personal_sheet_under_client_tab(monkeypatch):
+    roster = FakeRoster(
+        {SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"},
+        {ASSIGNEE_JID: "sheet-cristian"},
+    )
     lid_resolver = FakeLidResolver()
-    sheets_client = FakeSheetsClient()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
     monkeypatch.setattr(
         "handlers.task_handler.classify_message",
         lambda text, date, **kw: ClassificationResult(
@@ -142,15 +165,16 @@ def test_saves_task_with_assignee_from_mention(monkeypatch):
         _payload("revisa el stand mañana @Cristian", mentioned_jids=[ASSIGNEE_JID]),
         roster,
         lid_resolver,
-        sheets_client,
-        GROUP_JID,
+        group_registry,
+        task_writer,
     )
 
-    assert len(sheets_client.appended) == 1
-    saved = sheets_client.appended[0]
+    assert len(task_writer.appended) == 1
+    saved = task_writer.appended[0]
+    assert saved["sheet_id"] == "sheet-cristian"
+    assert saved["client_tab"] == "clinicachia"
     assert saved["reporter"] == "Ana"
     assert saved["description"] == "Revisar el stand"
-    assert saved["assignee"] == "Cristian"
     assert saved["due_date"] == "2026-07-24"
     assert saved["status"] == "Pendiente"
 
@@ -160,9 +184,13 @@ def test_resolves_lid_mentions_and_sender_before_matching_roster(monkeypatch):
     identifiers instead of phone JIDs for the sender and for mentions."""
     sender_lid = "151556578083034@lid"
     assignee_lid = "203744859922485@lid"
-    roster = FakeRoster({SENDER_JID: "Eduar", ASSIGNEE_JID: "Gustavo"})
+    roster = FakeRoster(
+        {SENDER_JID: "Eduar", ASSIGNEE_JID: "Gustavo"},
+        {ASSIGNEE_JID: "sheet-gustavo"},
+    )
     lid_resolver = FakeLidResolver({sender_lid: SENDER_JID, assignee_lid: ASSIGNEE_JID})
-    sheets_client = FakeSheetsClient()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
     monkeypatch.setattr(
         "handlers.task_handler.classify_message",
         lambda text, date, **kw: ClassificationResult(
@@ -178,84 +206,132 @@ def test_resolves_lid_mentions_and_sender_before_matching_roster(monkeypatch):
         ),
         roster,
         lid_resolver,
-        sheets_client,
-        GROUP_JID,
+        group_registry,
+        task_writer,
     )
 
-    assert len(sheets_client.appended) == 1
-    saved = sheets_client.appended[0]
+    assert len(task_writer.appended) == 1
+    saved = task_writer.appended[0]
     assert saved["reporter"] == "Eduar"
-    assert saved["assignee"] == "Gustavo"
+    assert saved["sheet_id"] == "sheet-gustavo"
 
 
-def test_self_mention_does_not_self_assign(monkeypatch):
-    roster = FakeRoster({SENDER_JID: "Ana"})
+def test_self_mention_warns_instead_of_saving(monkeypatch):
+    roster = FakeRoster({SENDER_JID: "Ana"}, {SENDER_JID: "sheet-ana"})
     lid_resolver = FakeLidResolver()
-    sheets_client = FakeSheetsClient()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
     monkeypatch.setattr(
         "handlers.task_handler.classify_message",
         lambda text, date, **kw: ClassificationResult(
             es_tarea=True, descripcion="Avisarle a alguien", fecha_limite=None
         ),
     )
+    sent = []
+    monkeypatch.setattr(
+        "handlers.task_handler.send_text_message", lambda group_jid, text: sent.append(text)
+    )
 
     handle_webhook_payload(
         _payload("recuérdame @Ana avisarle a alguien", mentioned_jids=[SENDER_JID]),
         roster,
         lid_resolver,
-        sheets_client,
-        GROUP_JID,
+        group_registry,
+        task_writer,
     )
 
-    assert sheets_client.appended[0]["assignee"] == "Sin asignar"
+    assert task_writer.appended == []
+    assert len(sent) == 1
+    assert "no pude identificar a quién asignar" in sent[0].lower()
 
 
-def test_unresolvable_mention_falls_back_to_unassigned(monkeypatch):
+def test_unresolvable_mention_warns_instead_of_saving(monkeypatch):
     unknown_jid = "573007778899@s.whatsapp.net"
-    roster = FakeRoster({SENDER_JID: "Ana"})
+    roster = FakeRoster({SENDER_JID: "Ana"}, {SENDER_JID: "sheet-ana"})
     lid_resolver = FakeLidResolver()
-    sheets_client = FakeSheetsClient()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
     monkeypatch.setattr(
         "handlers.task_handler.classify_message",
         lambda text, date, **kw: ClassificationResult(
             es_tarea=True, descripcion="Revisar el stand", fecha_limite=None
         ),
     )
+    sent = []
+    monkeypatch.setattr(
+        "handlers.task_handler.send_text_message", lambda group_jid, text: sent.append(text)
+    )
 
     handle_webhook_payload(
         _payload("revisa el stand @alguien", mentioned_jids=[unknown_jid]),
         roster,
         lid_resolver,
-        sheets_client,
-        GROUP_JID,
+        group_registry,
+        task_writer,
     )
 
-    assert sheets_client.appended[0]["assignee"] == "Sin asignar"
+    assert task_writer.appended == []
+    assert len(sent) == 1
+    assert "no pude identificar a quién asignar" in sent[0].lower()
+
+
+def test_warns_when_assignee_has_no_personal_sheet_configured(monkeypatch):
+    roster = FakeRoster({SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"})  # no sheet_ids passed
+    lid_resolver = FakeLidResolver()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
+    monkeypatch.setattr(
+        "handlers.task_handler.classify_message",
+        lambda text, date, **kw: ClassificationResult(
+            es_tarea=True, descripcion="Revisar el stand", fecha_limite=None
+        ),
+    )
+    sent = []
+    monkeypatch.setattr(
+        "handlers.task_handler.send_text_message", lambda group_jid, text: sent.append(text)
+    )
+
+    handle_webhook_payload(
+        _payload("revisa el stand @Cristian", mentioned_jids=[ASSIGNEE_JID]),
+        roster,
+        lid_resolver,
+        group_registry,
+        task_writer,
+    )
+
+    assert task_writer.appended == []
+    assert len(sent) == 1
+    assert "no encontré la hoja personal de cristian" in sent[0].lower()
 
 
 def test_ignores_messages_with_no_mention_without_calling_classifier(monkeypatch):
-    """A mention is now required for a message to even be considered a
-    possible task -- messages with no '@' at all should never reach the
-    classifier (saves an unnecessary OpenAI call) or get saved."""
-    roster = FakeRoster({SENDER_JID: "Ana"})
+    """A mention is required for a message to even be considered a possible
+    task -- messages with no '@' at all should never reach the classifier
+    (saves an unnecessary OpenAI call) or get saved."""
+    roster = FakeRoster({SENDER_JID: "Ana"}, {SENDER_JID: "sheet-ana"})
     lid_resolver = FakeLidResolver()
-    sheets_client = FakeSheetsClient()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
     monkeypatch.setattr(
         "handlers.task_handler.classify_message",
         lambda text, date, **kw: (_ for _ in ()).throw(AssertionError("should not classify")),
     )
 
     handle_webhook_payload(
-        _payload("hay que revisar el stand"), roster, lid_resolver, sheets_client, GROUP_JID
+        _payload("hay que revisar el stand"), roster, lid_resolver, group_registry, task_writer
     )
 
-    assert sheets_client.appended == []
+    assert task_writer.appended == []
 
 
 def test_ignores_classifier_errors_without_saving(monkeypatch):
-    roster = FakeRoster({SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"})
+    roster = FakeRoster(
+        {SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"},
+        {ASSIGNEE_JID: "sheet-cristian"},
+    )
     lid_resolver = FakeLidResolver()
-    sheets_client = FakeSheetsClient()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
 
     def raise_error(text, date, **kw):
         raise ClassifierError("timeout")
@@ -266,11 +342,11 @@ def test_ignores_classifier_errors_without_saving(monkeypatch):
         _payload("algo @Cristian", mentioned_jids=[ASSIGNEE_JID]),
         roster,
         lid_resolver,
-        sheets_client,
-        GROUP_JID,
+        group_registry,
+        task_writer,
     )
 
-    assert sheets_client.appended == []
+    assert task_writer.appended == []
 
 
 def test_created_at_and_classifier_date_share_the_same_moment(monkeypatch):
@@ -278,9 +354,13 @@ def test_created_at_and_classifier_date_share_the_same_moment(monkeypatch):
     classifier (date only, for resolving 'mañana'/'el viernes') must come
     from a single `datetime.now()` call, not two separate ones that could
     disagree across a midnight boundary."""
-    roster = FakeRoster({SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"})
+    roster = FakeRoster(
+        {SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"},
+        {ASSIGNEE_JID: "sheet-cristian"},
+    )
     lid_resolver = FakeLidResolver()
-    sheets_client = FakeSheetsClient()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
     captured = {}
 
     def fake_classify(text, date, **kw):
@@ -295,11 +375,11 @@ def test_created_at_and_classifier_date_share_the_same_moment(monkeypatch):
         _payload("hay que revisar el stand @Cristian", mentioned_jids=[ASSIGNEE_JID]),
         roster,
         lid_resolver,
-        sheets_client,
-        GROUP_JID,
+        group_registry,
+        task_writer,
     )
 
-    created_at = sheets_client.appended[0]["created_at"]
+    created_at = task_writer.appended[0]["created_at"]
     assert created_at.startswith(captured["classify_date"])
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", created_at)
 
@@ -311,9 +391,13 @@ def test_today_is_computed_using_configured_timezone(monkeypatch):
     from config import Config
 
     monkeypatch.setattr(Config, "TIMEZONE", "Pacific/Kiritimati")
-    roster = FakeRoster({SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"})
+    roster = FakeRoster(
+        {SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"},
+        {ASSIGNEE_JID: "sheet-cristian"},
+    )
     lid_resolver = FakeLidResolver()
-    sheets_client = FakeSheetsClient()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
     captured = {}
 
     def fake_classify(text, date, **kw):
@@ -328,8 +412,8 @@ def test_today_is_computed_using_configured_timezone(monkeypatch):
         _payload("hay que revisar el stand @Cristian", mentioned_jids=[ASSIGNEE_JID]),
         roster,
         lid_resolver,
-        sheets_client,
-        GROUP_JID,
+        group_registry,
+        task_writer,
     )
 
     expected = datetime.now(ZoneInfo("Pacific/Kiritimati")).date().isoformat()
@@ -337,9 +421,13 @@ def test_today_is_computed_using_configured_timezone(monkeypatch):
 
 
 def test_processes_multiple_messages_in_one_payload(monkeypatch):
-    roster = FakeRoster({SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"})
+    roster = FakeRoster(
+        {SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"},
+        {ASSIGNEE_JID: "sheet-cristian"},
+    )
     lid_resolver = FakeLidResolver()
-    sheets_client = FakeSheetsClient()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
     monkeypatch.setattr(
         "handlers.task_handler.classify_message",
         lambda text, date, **kw: ClassificationResult(
@@ -370,17 +458,21 @@ def test_processes_multiple_messages_in_one_payload(monkeypatch):
         ]
     }
 
-    handle_webhook_payload(payload, roster, lid_resolver, sheets_client, GROUP_JID)
+    handle_webhook_payload(payload, roster, lid_resolver, group_registry, task_writer)
 
-    assert len(sheets_client.appended) == 2
-    assert sheets_client.appended[0]["description"] == "primera tarea @Cristian"
-    assert sheets_client.appended[1]["description"] == "segunda tarea @Cristian"
+    assert len(task_writer.appended) == 2
+    assert task_writer.appended[0]["description"] == "primera tarea @Cristian"
+    assert task_writer.appended[1]["description"] == "segunda tarea @Cristian"
 
 
 def test_sends_warning_when_sheets_write_fails(monkeypatch):
-    roster = FakeRoster({SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"})
+    roster = FakeRoster(
+        {SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"},
+        {ASSIGNEE_JID: "sheet-cristian"},
+    )
     lid_resolver = FakeLidResolver()
-    sheets_client = FakeSheetsClient(fail=True)
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter(fail=True)
     monkeypatch.setattr(
         "handlers.task_handler.classify_message",
         lambda text, date, **kw: ClassificationResult(
@@ -396,8 +488,8 @@ def test_sends_warning_when_sheets_write_fails(monkeypatch):
         _payload("hay que revisar el stand @Cristian", mentioned_jids=[ASSIGNEE_JID]),
         roster,
         lid_resolver,
-        sheets_client,
-        GROUP_JID,
+        group_registry,
+        task_writer,
     )
 
     assert len(sent) == 1
