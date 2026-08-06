@@ -15,10 +15,11 @@ from starlette.concurrency import run_in_threadpool
 from config import Config
 from handlers.spelling_handler import handle_webhook_payload as handle_spelling_payload
 from handlers.task_handler import handle_webhook_payload as handle_task_payload
+from services.group_registry import GroupRegistry
 from services.image_batch import ImageBatchBuffer
 from services.lid_resolver import LidResolver
 from services.roster import Roster
-from services.sheets_client import create_sheets_client
+from services.sheets_client import create_personal_task_writer, create_sheets_client
 
 logging.basicConfig(level=Config.LOG_LEVEL)
 logger = logging.getLogger(__name__)
@@ -30,7 +31,9 @@ async def lifespan(app: FastAPI):
     sheets_client = create_sheets_client(Config.GOOGLE_SHEETS_ID, Config.GOOGLE_CREDENTIALS_PATH)
     app.state.sheets_client = sheets_client
     app.state.roster = Roster(sheets_client)
-    app.state.lid_resolver = LidResolver(Config.WHATSAPP_GROUP_JID)
+    app.state.group_registry = GroupRegistry(sheets_client)
+    app.state.lid_resolver = LidResolver()
+    app.state.personal_task_writer = create_personal_task_writer(Config.GOOGLE_CREDENTIALS_PATH)
     app.state.image_batch_buffer = ImageBatchBuffer()
     yield
 
@@ -52,8 +55,8 @@ async def webhook(request: Request):
             payload,
             request.app.state.roster,
             request.app.state.lid_resolver,
-            request.app.state.sheets_client,
-            Config.WHATSAPP_GROUP_JID,
+            request.app.state.group_registry,
+            request.app.state.personal_task_writer,
         )
     except Exception:
         logger.exception("Failed to process task webhook payload")
@@ -64,7 +67,7 @@ async def webhook(request: Request):
             payload,
             request.app.state.roster,
             request.app.state.lid_resolver,
-            Config.WHATSAPP_GROUP_JID,
+            request.app.state.group_registry,
             request.app.state.image_batch_buffer,
         )
     except Exception:
