@@ -1,7 +1,8 @@
 """
 FastAPI app: receives Evolution API webhooks and hands each message to the
-task handler. Google Sheets / roster clients are created lazily on startup
-so importing this module has no side effects (needed for testing).
+task handler and the spelling-review handler. Google Sheets / roster clients
+are created lazily on startup so importing this module has no side effects
+(needed for testing).
 """
 import logging
 from contextlib import asynccontextmanager
@@ -9,7 +10,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 
 from config import Config
-from handlers.task_handler import handle_webhook_payload
+from handlers.spelling_handler import handle_webhook_payload as handle_spelling_payload
+from handlers.task_handler import handle_webhook_payload as handle_task_payload
 from services.lid_resolver import LidResolver
 from services.roster import Roster
 from services.sheets_client import create_sheets_client
@@ -35,7 +37,12 @@ app = FastAPI(lifespan=lifespan)
 async def webhook(request: Request):
     try:
         payload = await request.json()
-        handle_webhook_payload(
+    except Exception:
+        logger.exception("Failed to parse webhook JSON body")
+        return {"status": "ok"}
+
+    try:
+        handle_task_payload(
             payload,
             request.app.state.roster,
             request.app.state.lid_resolver,
@@ -43,5 +50,16 @@ async def webhook(request: Request):
             Config.WHATSAPP_GROUP_JID,
         )
     except Exception:
-        logger.exception("Failed to process webhook payload")
+        logger.exception("Failed to process task webhook payload")
+
+    try:
+        handle_spelling_payload(
+            payload,
+            request.app.state.roster,
+            request.app.state.lid_resolver,
+            Config.WHATSAPP_GROUP_JID,
+        )
+    except Exception:
+        logger.exception("Failed to process spelling webhook payload")
+
     return {"status": "ok"}
