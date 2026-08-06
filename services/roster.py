@@ -13,7 +13,7 @@ class Roster:
         self._sheets_client = sheets_client
         self._ttl_seconds = ttl_seconds
         self._time_func = time_func
-        self._by_phone: dict[str, str] = {}
+        self._by_phone: dict[str, tuple[str, str]] = {}
         self._loaded_at: float = float("-inf")
 
     def _ensure_loaded(self) -> None:
@@ -27,7 +27,9 @@ class Roster:
                 raise
             logger.warning("Failed to refresh roster, using stale cache", exc_info=True)
             return
-        self._by_phone = {self._normalize(number): name for name, number in rows}
+        self._by_phone = {
+            self._normalize(number): (name, sheet_id) for name, number, sheet_id in rows
+        }
         self._loaded_at = now
 
     @staticmethod
@@ -46,7 +48,15 @@ class Roster:
 
     def resolve_name(self, jid: str) -> str | None:
         self._ensure_loaded()
-        return self._by_phone.get(self._normalize(self._phone_from_jid(jid)))
+        entry = self._by_phone.get(self._normalize(self._phone_from_jid(jid)))
+        return entry[0] if entry else None
+
+    def resolve_personal_sheet_id(self, jid: str) -> str | None:
+        self._ensure_loaded()
+        entry = self._by_phone.get(self._normalize(self._phone_from_jid(jid)))
+        if entry is None:
+            return None
+        return entry[1] or None
 
     def same_person(self, jid_a: str, jid_b: str) -> bool:
         return self._normalize(self._phone_from_jid(jid_a)) == self._normalize(self._phone_from_jid(jid_b))
