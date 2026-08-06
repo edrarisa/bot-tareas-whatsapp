@@ -10,14 +10,15 @@ def test_webhook_delegates_to_both_handlers(monkeypatch):
     def fake_task_handler(payload, roster, lid_resolver, sheets_client, group_jid):
         task_calls.append((payload, roster, lid_resolver, sheets_client, group_jid))
 
-    def fake_spelling_handler(payload, roster, lid_resolver, group_jid):
-        spelling_calls.append((payload, roster, lid_resolver, group_jid))
+    def fake_spelling_handler(payload, roster, lid_resolver, group_jid, batch_buffer):
+        spelling_calls.append((payload, roster, lid_resolver, group_jid, batch_buffer))
 
     monkeypatch.setattr(main, "handle_task_payload", fake_task_handler)
     monkeypatch.setattr(main, "handle_spelling_payload", fake_spelling_handler)
     main.app.state.roster = "fake-roster"
     main.app.state.lid_resolver = "fake-lid-resolver"
     main.app.state.sheets_client = "fake-sheets-client"
+    main.app.state.image_batch_buffer = "fake-image-batch-buffer"
     monkeypatch.setattr(main.Config, "WHATSAPP_GROUP_JID", "120363429440515454@g.us")
 
     client = TestClient(main.app)
@@ -29,7 +30,7 @@ def test_webhook_delegates_to_both_handlers(monkeypatch):
         (body, "fake-roster", "fake-lid-resolver", "fake-sheets-client", "120363429440515454@g.us")
     ]
     assert spelling_calls == [
-        (body, "fake-roster", "fake-lid-resolver", "120363429440515454@g.us")
+        (body, "fake-roster", "fake-lid-resolver", "120363429440515454@g.us", "fake-image-batch-buffer")
     ]
 
 
@@ -42,6 +43,7 @@ def test_webhook_returns_200_even_if_task_handler_raises(monkeypatch):
     main.app.state.roster = "fake-roster"
     main.app.state.lid_resolver = "fake-lid-resolver"
     main.app.state.sheets_client = "fake-sheets-client"
+    main.app.state.image_batch_buffer = "fake-image-batch-buffer"
     monkeypatch.setattr(main.Config, "WHATSAPP_GROUP_JID", "120363429440515454@g.us")
 
     client = TestClient(main.app)
@@ -51,7 +53,7 @@ def test_webhook_returns_200_even_if_task_handler_raises(monkeypatch):
 
 
 def test_webhook_returns_200_even_if_spelling_handler_raises(monkeypatch):
-    def raising_handler(payload, roster, lid_resolver, group_jid):
+    def raising_handler(payload, roster, lid_resolver, group_jid, batch_buffer):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(main, "handle_task_payload", lambda *a: None)
@@ -59,6 +61,7 @@ def test_webhook_returns_200_even_if_spelling_handler_raises(monkeypatch):
     main.app.state.roster = "fake-roster"
     main.app.state.lid_resolver = "fake-lid-resolver"
     main.app.state.sheets_client = "fake-sheets-client"
+    main.app.state.image_batch_buffer = "fake-image-batch-buffer"
     monkeypatch.setattr(main.Config, "WHATSAPP_GROUP_JID", "120363429440515454@g.us")
 
     client = TestClient(main.app)
@@ -74,7 +77,7 @@ def test_spelling_handler_still_runs_when_task_handler_raises(monkeypatch):
     def raising_task_handler(payload, roster, lid_resolver, sheets_client, group_jid):
         raise RuntimeError("boom")
 
-    def fake_spelling_handler(payload, roster, lid_resolver, group_jid):
+    def fake_spelling_handler(payload, roster, lid_resolver, group_jid, batch_buffer):
         spelling_calls.append(payload)
 
     monkeypatch.setattr(main, "handle_task_payload", raising_task_handler)
@@ -82,6 +85,7 @@ def test_spelling_handler_still_runs_when_task_handler_raises(monkeypatch):
     main.app.state.roster = "fake-roster"
     main.app.state.lid_resolver = "fake-lid-resolver"
     main.app.state.sheets_client = "fake-sheets-client"
+    main.app.state.image_batch_buffer = "fake-image-batch-buffer"
     monkeypatch.setattr(main.Config, "WHATSAPP_GROUP_JID", "120363429440515454@g.us")
 
     client = TestClient(main.app)
@@ -100,6 +104,7 @@ def test_webhook_returns_200_on_malformed_json_body(monkeypatch):
     main.app.state.roster = "fake-roster"
     main.app.state.lid_resolver = "fake-lid-resolver"
     main.app.state.sheets_client = "fake-sheets-client"
+    main.app.state.image_batch_buffer = "fake-image-batch-buffer"
     monkeypatch.setattr(main.Config, "WHATSAPP_GROUP_JID", "120363429440515454@g.us")
 
     client = TestClient(main.app)
@@ -127,6 +132,7 @@ def test_handlers_are_dispatched_via_threadpool(monkeypatch):
     main.app.state.roster = "fake-roster"
     main.app.state.lid_resolver = "fake-lid-resolver"
     main.app.state.sheets_client = "fake-sheets-client"
+    main.app.state.image_batch_buffer = "fake-image-batch-buffer"
     monkeypatch.setattr(main.Config, "WHATSAPP_GROUP_JID", "120363429440515454@g.us")
 
     client = TestClient(main.app)

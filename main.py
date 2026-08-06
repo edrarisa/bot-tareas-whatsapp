@@ -15,6 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from config import Config
 from handlers.spelling_handler import handle_webhook_payload as handle_spelling_payload
 from handlers.task_handler import handle_webhook_payload as handle_task_payload
+from services.image_batch import ImageBatchBuffer
 from services.lid_resolver import LidResolver
 from services.roster import Roster
 from services.sheets_client import create_sheets_client
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI):
     app.state.sheets_client = sheets_client
     app.state.roster = Roster(sheets_client)
     app.state.lid_resolver = LidResolver(Config.WHATSAPP_GROUP_JID)
+    app.state.image_batch_buffer = ImageBatchBuffer()
     yield
 
 
@@ -63,6 +65,7 @@ async def webhook(request: Request):
             request.app.state.roster,
             request.app.state.lid_resolver,
             Config.WHATSAPP_GROUP_JID,
+            request.app.state.image_batch_buffer,
         )
     except Exception:
         logger.exception("Failed to process spelling webhook payload")
