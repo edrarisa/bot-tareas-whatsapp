@@ -98,6 +98,7 @@ def _handle_message(message, roster, lid_resolver, group_registry, personal_task
             description=result.descripcion,
             due_date=result.fecha_limite,
             due_time=result.hora_limite,
+            is_urgent=result.es_urgente,
             status="Pendiente",
         )
     except Exception:

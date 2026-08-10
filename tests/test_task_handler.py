@@ -528,3 +528,34 @@ def test_sends_warning_when_sheets_write_fails(monkeypatch):
 
     assert len(sent) == 1
     assert "no pude guardar" in sent[0].lower()
+
+
+def test_passes_urgency_through_to_personal_task_writer(monkeypatch):
+    roster = FakeRoster(
+        {SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"},
+        {ASSIGNEE_JID: "sheet-cristian"},
+    )
+    lid_resolver = FakeLidResolver()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
+    monkeypatch.setattr(
+        "handlers.task_handler.classify_message",
+        lambda text, date, **kw: ClassificationResult(
+            es_tarea=True,
+            descripcion="Enviar el informe",
+            fecha_limite="2026-08-10",
+            hora_limite=None,
+            es_urgente=True,
+        ),
+    )
+
+    handle_webhook_payload(
+        _payload("urgente, envía el informe @Cristian", mentioned_jids=[ASSIGNEE_JID]),
+        roster,
+        lid_resolver,
+        group_registry,
+        task_writer,
+    )
+
+    assert len(task_writer.appended) == 1
+    assert task_writer.appended[0]["is_urgent"] is True
