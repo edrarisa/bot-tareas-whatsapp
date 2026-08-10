@@ -1,18 +1,25 @@
 from gspread.exceptions import WorksheetNotFound
+from gspread.utils import ValidationConditionType
 
 from services.sheets_client import PersonalTaskWriter, SheetsClient
 
 
 class FakeWorksheet:
-    def __init__(self, values=None):
+    def __init__(self, values=None, sheet_id=0):
         self._values = values or []
         self.appended_rows: list[list] = []
+        self.id = sheet_id
+        self.spreadsheet = None  # set by FakePersonalSpreadsheet.add_worksheet
+        self.validation_calls: list[tuple] = []
 
     def get_all_values(self):
         return self._values
 
     def append_row(self, row):
         self.appended_rows.append(row)
+
+    def add_validation(self, range, condition_type, values, showCustomUi=False, **kwargs):
+        self.validation_calls.append((range, condition_type, list(values), showCustomUi))
 
 
 class FakeSpreadsheet:
@@ -96,6 +103,7 @@ class FakePersonalSpreadsheet:
     def __init__(self):
         self._worksheets: dict[str, FakeWorksheet] = {}
         self.add_worksheet_calls = []
+        self.batch_update_calls = []
 
     def worksheet(self, name):
         if name not in self._worksheets:
@@ -104,9 +112,13 @@ class FakePersonalSpreadsheet:
 
     def add_worksheet(self, title, rows, cols):
         self.add_worksheet_calls.append((title, rows, cols))
-        worksheet = FakeWorksheet()
+        worksheet = FakeWorksheet(sheet_id=len(self._worksheets) + 1)
+        worksheet.spreadsheet = self
         self._worksheets[title] = worksheet
         return worksheet
+
+    def batch_update(self, body):
+        self.batch_update_calls.append(body)
 
 
 class FakeGspreadClient:
@@ -163,3 +175,66 @@ def test_personal_task_writer_reuses_existing_client_tab():
     assert existing_tab.appended_rows == [
         ["2026-08-06 10:00", "Ana", "Revisar el stand", "", "Pendiente"]
     ]
+
+
+def test_personal_task_writer_applies_status_dropdown_on_new_tab():
+    spreadsheet = FakePersonalSpreadsheet()
+    gspread_client = FakeGspreadClient({"sheet-cristian": spreadsheet})
+    writer = PersonalTaskWriter(gspread_client)
+
+    writer.append_task(
+        sheet_id="sheet-cristian",
+        client_tab="clinicachia",
+        created_at="2026-08-06 10:00",
+        reporter="Ana",
+        description="Revisar el stand",
+        due_date="2026-08-07",
+        status="Pendiente",
+    )
+
+    worksheet = spreadsheet._worksheets["clinicachia"]
+    assert len(worksheet.validation_calls) == 1
+    range_, condition_type, values, show_custom_ui = worksheet.validation_calls[0]
+    assert range_ == "E2:E100"
+    assert condition_type == ValidationConditionType.one_of_list
+    assert values == ["Pendiente", "En progreso", "Completada"]
+    assert show_custom_ui is True
+
+    assert len(spreadsheet.batch_update_calls) == 1
+    requests = spreadsheet.batch_update_calls[0]["requests"]
+    assert len(requests) == 3
+    statuses = [
+        req["addConditionalFormatRule"]["rule"]["booleanRule"]["condition"]["values"][0][
+            "userEnteredValue"
+        ]
+        for req in requests
+    ]
+    assert statuses == ["Pendiente", "En progreso", "Completada"]
+    for req in requests:
+        rule = req["addConditionalFormatRule"]["rule"]
+        assert rule["ranges"][0]["sheetId"] == worksheet.id
+        color = rule["booleanRule"]["format"]["backgroundColor"]
+        assert {"red", "green", "blue"} <= color.keys()
+
+
+def test_personal_task_writer_does_not_reapply_dropdown_on_existing_tab():
+    existing_tab = FakeWorksheet(
+        values=[["Fecha", "Reportado por", "Descripción", "Fecha límite", "Estado"]]
+    )
+    spreadsheet = FakePersonalSpreadsheet()
+    spreadsheet._worksheets["clinicachia"] = existing_tab
+    gspread_client = FakeGspreadClient({"sheet-cristian": spreadsheet})
+    writer = PersonalTaskWriter(gspread_client)
+
+    writer.append_task(
+        sheet_id="sheet-cristian",
+        client_tab="clinicachia",
+        created_at="2026-08-06 10:00",
+        reporter="Ana",
+        description="Revisar el stand",
+        due_date=None,
+        status="Pendiente",
+    )
+
+    assert existing_tab.validation_calls == []
+    assert spreadsheet.batch_update_calls == []
