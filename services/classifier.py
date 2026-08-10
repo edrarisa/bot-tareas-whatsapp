@@ -44,8 +44,10 @@ Devuelve SIEMPRE un JSON con estas claves, sin texto adicional:
 - "es_tarea": true si el mensaje le pide a alguien hacer algo concreto, false si no.
 - "descripcion": resumen corto en español de qué hay que hacer. null si es_tarea es false.
 - "fecha_limite": fecha límite en formato YYYY-MM-DD si el mensaje menciona una (ej. "mañana", \
-"el viernes"), resuelta contra la fecha de hoy. null si no se menciona ninguna fecha o si \
-es_tarea es false.
+"el viernes"), resuelta contra la fecha de hoy. Si el mensaje menciona una hora límite pero NO \
+menciona ningún día (ej. "antes de las 6 pm", sin decir "mañana" ni ningún otro día), asume que \
+es para hoy y usa la fecha de hoy. null si no se menciona ninguna fecha ni hora, o si es_tarea \
+es false.
 - "hora_limite": hora límite en formato de 24 horas HH:MM si el mensaje indica una hora concreta \
 para completar la tarea, sin importar cómo esté redactada -- la gente lo dice de muchas formas \
 distintas, no solo con "antes de". Por ejemplo: "antes de las 6 pm" -> "18:00", "a las 3:30" -> \
