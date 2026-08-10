@@ -29,12 +29,17 @@ Bot de WhatsApp con dos funciones, en varios grupos (uno por cliente):
    Editor, y poner su ID en la columna "Sheet ID" de "Equipo". Las pestañas por cliente se crean
    automáticamente la primera vez que se le asigna una tarea de ese cliente -- no hay que crearlas
    a mano. Cada pestaña nueva se crea con columnas `Fecha | Reportado por | Descripción | Fecha
-   límite | Hora | Estado`, y la columna "Estado" ya viene con un desplegable de colores
-   (Pendiente / En progreso / Completada).
-6. Agregar el bot a cada grupo de WhatsApp de cliente, y agregar una fila en "Grupos" por cada uno.
-7. Configurar el webhook de Evolution API para que apunte a `POST /webhook` de este servicio, con
+   límite | Hora | Estado | Urgente | Alerta 12pm | Alerta 5pm`, y la columna "Estado" ya viene con
+   un desplegable de colores (Pendiente / En progreso / Completada).
+6. Las tareas que la IA marca como urgentes (fecha límite el mismo día, o lenguaje explícito de
+   urgencia) reciben un recordatorio automático por WhatsApp al número personal de la persona
+   asignada a las 12 m. y a las 5 p. m., de lunes a viernes, mientras la tarea siga sin marcarse
+   como "Completada". Este chequeo corre solo dentro del propio bot -- no requiere configuración
+   adicional. Ver `docs/superpowers/specs/2026-08-10-urgent-task-reminders-design.md`.
+7. Agregar el bot a cada grupo de WhatsApp de cliente, y agregar una fila en "Grupos" por cada uno.
+8. Configurar el webhook de Evolution API para que apunte a `POST /webhook` de este servicio, con
    el evento `MESSAGES_UPSERT` activado.
-8. Activar **"Webhook Base64"** en esa misma configuración del webhook -- sin esto, la revisión de
+9. Activar **"Webhook Base64"** en esa misma configuración del webhook -- sin esto, la revisión de
    ortografía en imágenes no puede funcionar, porque el contenido de la imagen no llega en el
    payload.
 
