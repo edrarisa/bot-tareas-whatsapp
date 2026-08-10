@@ -45,19 +45,49 @@ class FakeResponse:
 
 def test_classifies_a_task_with_due_date():
     content = json.dumps(
-        {"es_tarea": True, "descripcion": "Revisar el stand", "fecha_limite": "2026-07-24"}
+        {
+            "es_tarea": True,
+            "descripcion": "Revisar el stand",
+            "fecha_limite": "2026-07-24",
+            "hora_limite": None,
+        }
     )
     client = FakeClient(content=content)
 
     result = classify_message("Cristian revisa el stand mañana", "2026-07-23", client=client)
 
     assert result == ClassificationResult(
-        es_tarea=True, descripcion="Revisar el stand", fecha_limite="2026-07-24"
+        es_tarea=True, descripcion="Revisar el stand", fecha_limite="2026-07-24", hora_limite=None
+    )
+
+
+def test_classifies_a_task_with_due_date_and_time():
+    content = json.dumps(
+        {
+            "es_tarea": True,
+            "descripcion": "Revisar el código de Bancamía",
+            "fecha_limite": "2026-08-10",
+            "hora_limite": "18:00",
+        }
+    )
+    client = FakeClient(content=content)
+
+    result = classify_message(
+        "revisa el código de bancamía antes de las 6 pm", "2026-08-10", client=client
+    )
+
+    assert result == ClassificationResult(
+        es_tarea=True,
+        descripcion="Revisar el código de Bancamía",
+        fecha_limite="2026-08-10",
+        hora_limite="18:00",
     )
 
 
 def test_classifies_a_non_task():
-    content = json.dumps({"es_tarea": False, "descripcion": None, "fecha_limite": None})
+    content = json.dumps(
+        {"es_tarea": False, "descripcion": None, "fecha_limite": None, "hora_limite": None}
+    )
     client = FakeClient(content=content)
 
     result = classify_message("jajaja buenísimo", "2026-07-23", client=client)
@@ -88,7 +118,12 @@ def test_raises_classifier_error_when_api_call_fails():
 
 def test_sends_expected_request_to_openai():
     content = json.dumps(
-        {"es_tarea": True, "descripcion": "Test task", "fecha_limite": "2026-07-24"}
+        {
+            "es_tarea": True,
+            "descripcion": "Test task",
+            "fecha_limite": "2026-07-24",
+            "hora_limite": None,
+        }
     )
     client = FakeClient(content=content)
 
@@ -104,7 +139,7 @@ def test_sends_expected_request_to_openai():
 
 def test_raises_classifier_error_when_es_tarea_is_not_a_bool():
     content = json.dumps(
-        {"es_tarea": "false", "descripcion": None, "fecha_limite": None}
+        {"es_tarea": "false", "descripcion": None, "fecha_limite": None, "hora_limite": None}
     )
     client = FakeClient(content=content)
 
@@ -114,7 +149,7 @@ def test_raises_classifier_error_when_es_tarea_is_not_a_bool():
 
 def test_raises_classifier_error_when_descripcion_is_not_a_string():
     content = json.dumps(
-        {"es_tarea": True, "descripcion": 123, "fecha_limite": None}
+        {"es_tarea": True, "descripcion": 123, "fecha_limite": None, "hora_limite": None}
     )
     client = FakeClient(content=content)
 
@@ -124,7 +159,12 @@ def test_raises_classifier_error_when_descripcion_is_not_a_string():
 
 def test_raises_classifier_error_when_fecha_limite_is_not_a_string():
     content = json.dumps(
-        {"es_tarea": True, "descripcion": "Task", "fecha_limite": ["2026-07-24"]}
+        {
+            "es_tarea": True,
+            "descripcion": "Task",
+            "fecha_limite": ["2026-07-24"],
+            "hora_limite": None,
+        }
     )
     client = FakeClient(content=content)
 
@@ -132,8 +172,28 @@ def test_raises_classifier_error_when_fecha_limite_is_not_a_string():
         classify_message("algo", "2026-07-23", client=client)
 
 
+def test_raises_classifier_error_when_hora_limite_is_not_a_string():
+    content = json.dumps(
+        {"es_tarea": True, "descripcion": "Task", "fecha_limite": None, "hora_limite": 1800}
+    )
+    client = FakeClient(content=content)
+
+    with pytest.raises(ClassifierError):
+        classify_message("algo", "2026-07-23", client=client)
+
+
+def test_raises_classifier_error_when_hora_limite_key_missing():
+    content = json.dumps({"es_tarea": True, "descripcion": "Task", "fecha_limite": None})
+    client = FakeClient(content=content)
+
+    with pytest.raises(ClassifierError):
+        classify_message("algo", "2026-07-23", client=client)
+
+
 def test_raises_classifier_error_when_es_tarea_true_but_descripcion_empty():
-    content = json.dumps({"es_tarea": True, "descripcion": "", "fecha_limite": None})
+    content = json.dumps(
+        {"es_tarea": True, "descripcion": "", "fecha_limite": None, "hora_limite": None}
+    )
     client = FakeClient(content=content)
 
     with pytest.raises(ClassifierError):
@@ -141,7 +201,9 @@ def test_raises_classifier_error_when_es_tarea_true_but_descripcion_empty():
 
 
 def test_raises_classifier_error_when_es_tarea_true_but_descripcion_null():
-    content = json.dumps({"es_tarea": True, "descripcion": None, "fecha_limite": None})
+    content = json.dumps(
+        {"es_tarea": True, "descripcion": None, "fecha_limite": None, "hora_limite": None}
+    )
     client = FakeClient(content=content)
 
     with pytest.raises(ClassifierError):

@@ -1,6 +1,7 @@
 """
 Classifies WhatsApp messages as tasks (or not) using OpenAI, extracting a
-short description and, if mentioned, a due date resolved to YYYY-MM-DD.
+short description and, if mentioned, a due date (YYYY-MM-DD) and due time
+(24h HH:MM).
 """
 import json
 import logging
@@ -31,6 +32,7 @@ class ClassificationResult:
     es_tarea: bool
     descripcion: str | None
     fecha_limite: str | None
+    hora_limite: str | None = None
 
 
 SYSTEM_PROMPT = """Eres un asistente que analiza mensajes de un grupo de WhatsApp de trabajo para \
@@ -43,7 +45,11 @@ Devuelve SIEMPRE un JSON con estas claves, sin texto adicional:
 - "descripcion": resumen corto en español de qué hay que hacer. null si es_tarea es false.
 - "fecha_limite": fecha límite en formato YYYY-MM-DD si el mensaje menciona una (ej. "mañana", \
 "el viernes"), resuelta contra la fecha de hoy. null si no se menciona ninguna fecha o si \
-es_tarea es false."""
+es_tarea es false.
+- "hora_limite": hora límite en formato de 24 horas HH:MM si el mensaje menciona una hora \
+explícita (ej. "antes de las 6 pm" -> "18:00", "a las 3:30" -> "15:30"). null si no se menciona \
+ninguna hora explícita, si la hora es vaga (ej. "en la tarde", "más tarde"), o si es_tarea es \
+false."""
 
 
 def classify_message(
@@ -64,16 +70,22 @@ def classify_message(
         es_tarea = data["es_tarea"]
         descripcion = data["descripcion"]
         fecha_limite = data["fecha_limite"]
+        hora_limite = data["hora_limite"]
         if not isinstance(es_tarea, bool):
             raise ValueError(f"es_tarea must be a bool, got {type(es_tarea).__name__}")
         if descripcion is not None and not isinstance(descripcion, str):
             raise ValueError(f"descripcion must be a string or null, got {type(descripcion).__name__}")
         if fecha_limite is not None and not isinstance(fecha_limite, str):
             raise ValueError(f"fecha_limite must be a string or null, got {type(fecha_limite).__name__}")
+        if hora_limite is not None and not isinstance(hora_limite, str):
+            raise ValueError(f"hora_limite must be a string or null, got {type(hora_limite).__name__}")
         if es_tarea and not descripcion:
             raise ValueError("es_tarea is true but descripcion is missing or empty")
         return ClassificationResult(
-            es_tarea=es_tarea, descripcion=descripcion, fecha_limite=fecha_limite
+            es_tarea=es_tarea,
+            descripcion=descripcion,
+            fecha_limite=fecha_limite,
+            hora_limite=hora_limite,
         )
     except Exception as exc:
         logger.warning(f"Classifier failed: {exc}")

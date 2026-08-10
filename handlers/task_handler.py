@@ -97,6 +97,7 @@ def _handle_message(message, roster, lid_resolver, group_registry, personal_task
             reporter=reporter_name,
             description=result.descripcion,
             due_date=result.fecha_limite,
+            due_time=result.hora_limite,
             status="Pendiente",
         )
     except Exception:

@@ -141,20 +141,21 @@ def test_personal_task_writer_creates_client_tab_when_missing():
         reporter="Ana",
         description="Revisar el stand",
         due_date="2026-08-07",
+        due_time="18:00",
         status="Pendiente",
     )
 
-    assert spreadsheet.add_worksheet_calls == [("clinicachia", 100, 5)]
+    assert spreadsheet.add_worksheet_calls == [("clinicachia", 100, 6)]
     worksheet = spreadsheet._worksheets["clinicachia"]
     assert worksheet.appended_rows == [
-        ["Fecha", "Reportado por", "Descripción", "Fecha límite", "Estado"],
-        ["2026-08-06 10:00", "Ana", "Revisar el stand", "2026-08-07", "Pendiente"],
+        ["Fecha", "Reportado por", "Descripción", "Fecha límite", "Hora", "Estado"],
+        ["2026-08-06 10:00", "Ana", "Revisar el stand", "2026-08-07", "18:00", "Pendiente"],
     ]
 
 
 def test_personal_task_writer_reuses_existing_client_tab():
     existing_tab = FakeWorksheet(
-        values=[["Fecha", "Reportado por", "Descripción", "Fecha límite", "Estado"]]
+        values=[["Fecha", "Reportado por", "Descripción", "Fecha límite", "Hora", "Estado"]]
     )
     spreadsheet = FakePersonalSpreadsheet()
     spreadsheet._worksheets["clinicachia"] = existing_tab
@@ -168,12 +169,13 @@ def test_personal_task_writer_reuses_existing_client_tab():
         reporter="Ana",
         description="Revisar el stand",
         due_date=None,
+        due_time=None,
         status="Pendiente",
     )
 
     assert spreadsheet.add_worksheet_calls == []
     assert existing_tab.appended_rows == [
-        ["2026-08-06 10:00", "Ana", "Revisar el stand", "", "Pendiente"]
+        ["2026-08-06 10:00", "Ana", "Revisar el stand", "", "", "Pendiente"]
     ]
 
 
@@ -189,13 +191,14 @@ def test_personal_task_writer_applies_status_dropdown_on_new_tab():
         reporter="Ana",
         description="Revisar el stand",
         due_date="2026-08-07",
+        due_time="18:00",
         status="Pendiente",
     )
 
     worksheet = spreadsheet._worksheets["clinicachia"]
     assert len(worksheet.validation_calls) == 1
     range_, condition_type, values, show_custom_ui = worksheet.validation_calls[0]
-    assert range_ == "E2:E100"
+    assert range_ == "F2:F100"
     assert condition_type == ValidationConditionType.one_of_list
     assert values == ["Pendiente", "En progreso", "Completada"]
     assert show_custom_ui is True
@@ -219,7 +222,7 @@ def test_personal_task_writer_applies_status_dropdown_on_new_tab():
 
 def test_personal_task_writer_does_not_reapply_dropdown_on_existing_tab():
     existing_tab = FakeWorksheet(
-        values=[["Fecha", "Reportado por", "Descripción", "Fecha límite", "Estado"]]
+        values=[["Fecha", "Reportado por", "Descripción", "Fecha límite", "Hora", "Estado"]]
     )
     spreadsheet = FakePersonalSpreadsheet()
     spreadsheet._worksheets["clinicachia"] = existing_tab
@@ -233,6 +236,7 @@ def test_personal_task_writer_does_not_reapply_dropdown_on_existing_tab():
         reporter="Ana",
         description="Revisar el stand",
         due_date=None,
+        due_time=None,
         status="Pendiente",
     )
 

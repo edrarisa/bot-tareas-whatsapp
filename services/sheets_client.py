@@ -41,7 +41,7 @@ _STATUS_COLORS = {
     "En progreso": {"red": 0.68, "green": 0.85, "blue": 0.98},
     "Completada": {"red": 0.72, "green": 0.89, "blue": 0.72},
 }
-_STATUS_COLUMN_RANGE = "E2:E100"
+_STATUS_COLUMN_RANGE = "F2:F100"
 
 
 class PersonalTaskWriter:
@@ -50,7 +50,7 @@ class PersonalTaskWriter:
     spreadsheet) since it needs to open a different spreadsheet per
     assignee."""
 
-    _HEADERS = ["Fecha", "Reportado por", "Descripción", "Fecha límite", "Estado"]
+    _HEADERS = ["Fecha", "Reportado por", "Descripción", "Fecha límite", "Hora", "Estado"]
 
     def __init__(self, gspread_client):
         self._gspread_client = gspread_client
@@ -63,6 +63,7 @@ class PersonalTaskWriter:
         reporter: str,
         description: str,
         due_date: str | None,
+        due_time: str | None,
         status: str,
     ) -> None:
         spreadsheet = self._gspread_client.open_by_key(sheet_id)
@@ -74,7 +75,9 @@ class PersonalTaskWriter:
             )
             worksheet.append_row(self._HEADERS)
             self._apply_status_dropdown(worksheet)
-        worksheet.append_row([created_at, reporter, description, due_date or "", status])
+        worksheet.append_row(
+            [created_at, reporter, description, due_date or "", due_time or "", status]
+        )
 
     @staticmethod
     def _apply_status_dropdown(worksheet) -> None:

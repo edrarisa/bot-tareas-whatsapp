@@ -176,7 +176,41 @@ def test_saves_task_to_assignees_personal_sheet_under_client_tab(monkeypatch):
     assert saved["reporter"] == "Ana"
     assert saved["description"] == "Revisar el stand"
     assert saved["due_date"] == "2026-07-24"
+    assert saved["due_time"] is None
     assert saved["status"] == "Pendiente"
+
+
+def test_saves_task_with_due_time(monkeypatch):
+    roster = FakeRoster(
+        {SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"},
+        {ASSIGNEE_JID: "sheet-cristian"},
+    )
+    lid_resolver = FakeLidResolver()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
+    monkeypatch.setattr(
+        "handlers.task_handler.classify_message",
+        lambda text, date, **kw: ClassificationResult(
+            es_tarea=True,
+            descripcion="Revisar el código de Bancamía",
+            fecha_limite="2026-08-10",
+            hora_limite="18:00",
+        ),
+    )
+
+    handle_webhook_payload(
+        _payload(
+            "revisa el código de bancamía antes de las 6 pm @Cristian",
+            mentioned_jids=[ASSIGNEE_JID],
+        ),
+        roster,
+        lid_resolver,
+        group_registry,
+        task_writer,
+    )
+
+    assert len(task_writer.appended) == 1
+    assert task_writer.appended[0]["due_time"] == "18:00"
 
 
 def test_resolves_lid_mentions_and_sender_before_matching_roster(monkeypatch):

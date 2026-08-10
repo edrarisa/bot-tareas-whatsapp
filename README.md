@@ -28,7 +28,9 @@ Bot de WhatsApp con dos funciones, en varios grupos (uno por cliente):
    correo de la cuenta de servicio** (el mismo JSON de `GOOGLE_CREDENTIALS_PATH`) con permiso de
    Editor, y poner su ID en la columna "Sheet ID" de "Equipo". Las pestañas por cliente se crean
    automáticamente la primera vez que se le asigna una tarea de ese cliente -- no hay que crearlas
-   a mano.
+   a mano. Cada pestaña nueva se crea con columnas `Fecha | Reportado por | Descripción | Fecha
+   límite | Hora | Estado`, y la columna "Estado" ya viene con un desplegable de colores
+   (Pendiente / En progreso / Completada).
 6. Agregar el bot a cada grupo de WhatsApp de cliente, y agregar una fila en "Grupos" por cada uno.
 7. Configurar el webhook de Evolution API para que apunte a `POST /webhook` de este servicio, con
    el evento `MESSAGES_UPSERT` activado.
