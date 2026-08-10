@@ -4,10 +4,12 @@ task handler and the spelling-review handler. Google Sheets / roster clients
 are created lazily on startup so importing this module has no side effects
 (needed for testing). Handlers run in a thread pool (not directly on the
 event loop) since they do blocking network I/O (OpenAI, Google Sheets,
-Evolution API).
+Evolution API). A background loop also runs on a fixed interval to check
+for urgent tasks that need a WhatsApp reminder.
 """
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
 from starlette.concurrency import run_in_threadpool
@@ -18,6 +20,8 @@ from handlers.task_handler import handle_webhook_payload as handle_task_payload
 from services.group_registry import GroupRegistry
 from services.image_batch import ImageBatchBuffer
 from services.lid_resolver import LidResolver
+from services.reminder_scanner import create_reminder_scanner
+from services.reminder_scheduler import run_reminder_loop
 from services.roster import Roster
 from services.sheets_client import create_personal_task_writer, create_sheets_client
 
@@ -35,7 +39,15 @@ async def lifespan(app: FastAPI):
     app.state.lid_resolver = LidResolver()
     app.state.personal_task_writer = create_personal_task_writer(Config.GOOGLE_CREDENTIALS_PATH)
     app.state.image_batch_buffer = ImageBatchBuffer()
-    yield
+
+    reminder_scanner = create_reminder_scanner(sheets_client, Config.GOOGLE_CREDENTIALS_PATH)
+    reminder_task = asyncio.create_task(run_reminder_loop(reminder_scanner))
+    try:
+        yield
+    finally:
+        reminder_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await reminder_task
 
 
 app = FastAPI(lifespan=lifespan)
