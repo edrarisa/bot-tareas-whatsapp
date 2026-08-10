@@ -46,10 +46,12 @@ Devuelve SIEMPRE un JSON con estas claves, sin texto adicional:
 - "fecha_limite": fecha límite en formato YYYY-MM-DD si el mensaje menciona una (ej. "mañana", \
 "el viernes"), resuelta contra la fecha de hoy. null si no se menciona ninguna fecha o si \
 es_tarea es false.
-- "hora_limite": hora límite en formato de 24 horas HH:MM si el mensaje menciona una hora \
-explícita (ej. "antes de las 6 pm" -> "18:00", "a las 3:30" -> "15:30"). null si no se menciona \
-ninguna hora explícita, si la hora es vaga (ej. "en la tarde", "más tarde"), o si es_tarea es \
-false."""
+- "hora_limite": hora límite en formato de 24 horas HH:MM si el mensaje indica una hora concreta \
+para completar la tarea, sin importar cómo esté redactada -- la gente lo dice de muchas formas \
+distintas, no solo con "antes de". Por ejemplo: "antes de las 6 pm" -> "18:00", "a las 3:30" -> \
+"15:30", "para las 6" -> "18:00", "máximo a las 5" -> "17:00", "antes del mediodía" -> "12:00", \
+"entregarlo a las 9 am" -> "09:00". null si no se menciona ninguna hora concreta, si la hora es \
+vaga o relativa (ej. "en la tarde", "más tarde", "pronto"), o si es_tarea es false."""
 
 
 def classify_message(
