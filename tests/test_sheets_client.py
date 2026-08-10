@@ -142,20 +142,74 @@ def test_personal_task_writer_creates_client_tab_when_missing():
         description="Revisar el stand",
         due_date="2026-08-07",
         due_time="18:00",
+        is_urgent=True,
         status="Pendiente",
     )
 
-    assert spreadsheet.add_worksheet_calls == [("clinicachia", 100, 6)]
+    assert spreadsheet.add_worksheet_calls == [("clinicachia", 100, 9)]
     worksheet = spreadsheet._worksheets["clinicachia"]
     assert worksheet.appended_rows == [
-        ["Fecha", "Reportado por", "Descripción", "Fecha límite", "Hora", "Estado"],
-        ["2026-08-06 10:00", "Ana", "Revisar el stand", "2026-08-07", "18:00", "Pendiente"],
+        [
+            "Fecha",
+            "Reportado por",
+            "Descripción",
+            "Fecha límite",
+            "Hora",
+            "Estado",
+            "Urgente",
+            "Alerta 12pm",
+            "Alerta 5pm",
+        ],
+        [
+            "2026-08-06 10:00",
+            "Ana",
+            "Revisar el stand",
+            "2026-08-07",
+            "18:00",
+            "Pendiente",
+            "Sí",
+            "",
+            "",
+        ],
     ]
+
+
+def test_personal_task_writer_writes_no_for_non_urgent_task():
+    spreadsheet = FakePersonalSpreadsheet()
+    gspread_client = FakeGspreadClient({"sheet-cristian": spreadsheet})
+    writer = PersonalTaskWriter(gspread_client)
+
+    writer.append_task(
+        sheet_id="sheet-cristian",
+        client_tab="clinicachia",
+        created_at="2026-08-06 10:00",
+        reporter="Ana",
+        description="Revisar el stand",
+        due_date=None,
+        due_time=None,
+        is_urgent=False,
+        status="Pendiente",
+    )
+
+    worksheet = spreadsheet._worksheets["clinicachia"]
+    assert worksheet.appended_rows[1][6] == "No"
 
 
 def test_personal_task_writer_reuses_existing_client_tab():
     existing_tab = FakeWorksheet(
-        values=[["Fecha", "Reportado por", "Descripción", "Fecha límite", "Hora", "Estado"]]
+        values=[
+            [
+                "Fecha",
+                "Reportado por",
+                "Descripción",
+                "Fecha límite",
+                "Hora",
+                "Estado",
+                "Urgente",
+                "Alerta 12pm",
+                "Alerta 5pm",
+            ]
+        ]
     )
     spreadsheet = FakePersonalSpreadsheet()
     spreadsheet._worksheets["clinicachia"] = existing_tab
@@ -170,12 +224,13 @@ def test_personal_task_writer_reuses_existing_client_tab():
         description="Revisar el stand",
         due_date=None,
         due_time=None,
+        is_urgent=False,
         status="Pendiente",
     )
 
     assert spreadsheet.add_worksheet_calls == []
     assert existing_tab.appended_rows == [
-        ["2026-08-06 10:00", "Ana", "Revisar el stand", "", "", "Pendiente"]
+        ["2026-08-06 10:00", "Ana", "Revisar el stand", "", "", "Pendiente", "No", "", ""]
     ]
 
 
@@ -192,6 +247,7 @@ def test_personal_task_writer_applies_status_dropdown_on_new_tab():
         description="Revisar el stand",
         due_date="2026-08-07",
         due_time="18:00",
+        is_urgent=True,
         status="Pendiente",
     )
 
@@ -222,7 +278,19 @@ def test_personal_task_writer_applies_status_dropdown_on_new_tab():
 
 def test_personal_task_writer_does_not_reapply_dropdown_on_existing_tab():
     existing_tab = FakeWorksheet(
-        values=[["Fecha", "Reportado por", "Descripción", "Fecha límite", "Hora", "Estado"]]
+        values=[
+            [
+                "Fecha",
+                "Reportado por",
+                "Descripción",
+                "Fecha límite",
+                "Hora",
+                "Estado",
+                "Urgente",
+                "Alerta 12pm",
+                "Alerta 5pm",
+            ]
+        ]
     )
     spreadsheet = FakePersonalSpreadsheet()
     spreadsheet._worksheets["clinicachia"] = existing_tab
@@ -237,6 +305,7 @@ def test_personal_task_writer_does_not_reapply_dropdown_on_existing_tab():
         description="Revisar el stand",
         due_date=None,
         due_time=None,
+        is_urgent=False,
         status="Pendiente",
     )
 
