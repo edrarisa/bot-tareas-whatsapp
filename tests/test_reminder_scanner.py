@@ -268,3 +268,24 @@ def test_skips_members_without_sheet_id():
     scanner.run_check()
 
     assert sent == []
+
+
+class RaisingUpdateCellWorksheet(FakeWorksheet):
+    def update_cell(self, row, col, value):
+        raise RuntimeError("sheets api rate limited")
+
+
+def test_does_not_crash_when_marking_as_sent_fails():
+    worksheet = RaisingUpdateCellWorksheet("clinicachia", [_HEADERS, _row(fecha="2026-08-10 08:00")])
+    spreadsheet = FakeSpreadsheet([worksheet])
+    sheets_client = FakeSheetsClient([("Eduar", "573042747698", "sheet-eduar")])
+    gspread_client = FakeGspreadClient({"sheet-eduar": spreadsheet})
+    sent = []
+    now = datetime(2026, 8, 10, 12, 30, tzinfo=TZ)
+    scanner = ReminderScanner(
+        sheets_client, gspread_client, lambda jid, text: sent.append((jid, text)), now_func=lambda: now
+    )
+
+    scanner.run_check()
+
+    assert len(sent) == 1

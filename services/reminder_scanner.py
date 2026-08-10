@@ -76,8 +76,15 @@ class ReminderScanner:
         if len(row) > _COL_ESTADO and row[_COL_ESTADO] == _STATUS_COMPLETED:
             return
 
-        created_at = self._parse_created_at(row[_COL_FECHA] if row else "")
+        raw_fecha = row[_COL_FECHA] if row else ""
+        created_at = self._parse_created_at(raw_fecha)
         if created_at is None:
+            logger.warning(
+                "Unparseable task creation date %r for client %s, row %s; skipping row",
+                raw_fecha,
+                client_name,
+                row_number,
+            )
             return
         if now - created_at < timedelta(hours=_MIN_HOURS_SINCE_CREATION):
             return
@@ -109,7 +116,16 @@ class ReminderScanner:
         except Exception:
             logger.exception("Failed to send reminder to %s", phone_jid)
             return
-        worksheet.update_cell(row_number, alert_col + 1, today_str)
+        try:
+            worksheet.update_cell(row_number, alert_col + 1, today_str)
+        except Exception:
+            logger.exception(
+                "Reminder sent to %s but failed to mark row %s as sent on %s; "
+                "a duplicate reminder may be sent next cycle",
+                phone_jid,
+                row_number,
+                today_str,
+            )
 
     @staticmethod
     def _parse_created_at(value: str) -> datetime | None:
