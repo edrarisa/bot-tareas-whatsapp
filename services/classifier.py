@@ -1,7 +1,7 @@
 """
 Classifies WhatsApp messages as tasks (or not) using OpenAI, extracting a
-short description and, if mentioned, a due date (YYYY-MM-DD) and due time
-(24h HH:MM).
+short description, a due date (YYYY-MM-DD), a due time (24h HH:MM), and
+whether the task is urgent.
 """
 import json
 import logging
@@ -33,6 +33,7 @@ class ClassificationResult:
     descripcion: str | None
     fecha_limite: str | None
     hora_limite: str | None = None
+    es_urgente: bool = False
 
 
 SYSTEM_PROMPT = """Eres un asistente que analiza mensajes de un grupo de WhatsApp de trabajo para \
@@ -53,7 +54,11 @@ para completar la tarea, sin importar cómo esté redactada -- la gente lo dice 
 distintas, no solo con "antes de". Por ejemplo: "antes de las 6 pm" -> "18:00", "a las 3:30" -> \
 "15:30", "para las 6" -> "18:00", "máximo a las 5" -> "17:00", "antes del mediodía" -> "12:00", \
 "entregarlo a las 9 am" -> "09:00". null si no se menciona ninguna hora concreta, si la hora es \
-vaga o relativa (ej. "en la tarde", "más tarde", "pronto"), o si es_tarea es false."""
+vaga o relativa (ej. "en la tarde", "más tarde", "pronto"), o si es_tarea es false.
+- "es_urgente": true si la tarea es urgente -- porque su fecha límite es HOY (el mismo día en que \
+se crea la tarea), o porque el mensaje usa lenguaje explícito de urgencia (ej. "urgente", "ya", \
+"necesito esto ahora", "es urgente"), lo que ocurra primero. false en cualquier otro caso, \
+incluyendo si es_tarea es false."""
 
 
 def classify_message(
@@ -75,6 +80,7 @@ def classify_message(
         descripcion = data["descripcion"]
         fecha_limite = data["fecha_limite"]
         hora_limite = data["hora_limite"]
+        es_urgente = data["es_urgente"]
         if not isinstance(es_tarea, bool):
             raise ValueError(f"es_tarea must be a bool, got {type(es_tarea).__name__}")
         if descripcion is not None and not isinstance(descripcion, str):
@@ -83,6 +89,8 @@ def classify_message(
             raise ValueError(f"fecha_limite must be a string or null, got {type(fecha_limite).__name__}")
         if hora_limite is not None and not isinstance(hora_limite, str):
             raise ValueError(f"hora_limite must be a string or null, got {type(hora_limite).__name__}")
+        if not isinstance(es_urgente, bool):
+            raise ValueError(f"es_urgente must be a bool, got {type(es_urgente).__name__}")
         if es_tarea and not descripcion:
             raise ValueError("es_tarea is true but descripcion is missing or empty")
         return ClassificationResult(
@@ -90,6 +98,7 @@ def classify_message(
             descripcion=descripcion,
             fecha_limite=fecha_limite,
             hora_limite=hora_limite,
+            es_urgente=es_urgente,
         )
     except Exception as exc:
         logger.warning(f"Classifier failed: {exc}")
