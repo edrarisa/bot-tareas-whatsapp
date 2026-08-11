@@ -111,7 +111,7 @@ def test_sends_noon_alert_for_urgent_incomplete_task_past_grace_period():
     assert jid == "573042747698@s.whatsapp.net"
     assert "clinicachia" in text
     assert "Revisar algo" in text
-    assert worksheet.update_cell_calls == [(2, 8, "2026-08-10")]
+    assert worksheet.update_cell_calls == [(2, 8, "2026-08-10 12:30")]
 
 
 def test_does_not_resend_noon_alert_same_day():
@@ -148,7 +148,7 @@ def test_resends_noon_alert_next_day():
     scanner.run_check()
 
     assert len(sent) == 1
-    assert worksheet.update_cell_calls == [(2, 8, "2026-08-11")]
+    assert worksheet.update_cell_calls == [(2, 8, "2026-08-11 12:30")]
 
 
 def test_evaluates_5pm_alert_independently_of_noon():
@@ -167,7 +167,7 @@ def test_evaluates_5pm_alert_independently_of_noon():
     scanner.run_check()
 
     assert len(sent) == 1
-    assert worksheet.update_cell_calls == [(2, 9, "2026-08-10")]
+    assert worksheet.update_cell_calls == [(2, 9, "2026-08-10 17:30")]
 
 
 def test_ignores_non_urgent_task():

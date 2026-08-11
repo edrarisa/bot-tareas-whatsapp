@@ -3,8 +3,8 @@ Scans every team member's personal Google Sheet for urgent, incomplete
 tasks and sends a WhatsApp reminder to their personal number at noon and
 5pm on weekdays, respecting a 2-hour grace period after the task was
 created. Already-sent alerts are tracked in the Sheet itself (the
-"Alerta 12pm" / "Alerta 5pm" columns hold the date they were last sent),
-so restarting the bot never duplicates or loses an alert.
+"Alerta 12pm" / "Alerta 5pm" columns hold the date and time they were last
+sent), so restarting the bot never duplicates or loses an alert.
 """
 import logging
 import os
@@ -106,22 +106,27 @@ class ReminderScanner:
             return
 
         today_str = now.date().isoformat()
+        sent_at_str = now.strftime("%Y-%m-%d %H:%M")
         description = row[_COL_DESCRIPCION] if len(row) > _COL_DESCRIPCION else ""
 
+        # Compare by date prefix (not exact equality) since the cell stores a
+        # full "YYYY-MM-DD HH:MM" timestamp, not just a date -- this also
+        # keeps already-sent rows written before this change (date-only)
+        # working correctly.
         alerta_12pm = row[_COL_ALERTA_12PM] if len(row) > _COL_ALERTA_12PM else ""
-        if noon_open and alerta_12pm != today_str:
+        if noon_open and not alerta_12pm.startswith(today_str):
             self._send_and_mark(
-                worksheet, row_number, _COL_ALERTA_12PM, phone_jid, client_name, description, today_str
+                worksheet, row_number, _COL_ALERTA_12PM, phone_jid, client_name, description, sent_at_str
             )
 
         alerta_5pm = row[_COL_ALERTA_5PM] if len(row) > _COL_ALERTA_5PM else ""
-        if five_pm_open and alerta_5pm != today_str:
+        if five_pm_open and not alerta_5pm.startswith(today_str):
             self._send_and_mark(
-                worksheet, row_number, _COL_ALERTA_5PM, phone_jid, client_name, description, today_str
+                worksheet, row_number, _COL_ALERTA_5PM, phone_jid, client_name, description, sent_at_str
             )
 
     def _send_and_mark(
-        self, worksheet, row_number, alert_col, phone_jid, client_name, description, today_str
+        self, worksheet, row_number, alert_col, phone_jid, client_name, description, sent_at_str
     ) -> None:
         message = (
             f'⏰ Recordatorio: tienes pendiente la tarea urgente de *{client_name}*: '
@@ -136,14 +141,14 @@ class ReminderScanner:
             "Sent urgent-task reminder to %s for client %s (row %s)", phone_jid, client_name, row_number
         )
         try:
-            worksheet.update_cell(row_number, alert_col + 1, today_str)
+            worksheet.update_cell(row_number, alert_col + 1, sent_at_str)
         except Exception:
             logger.exception(
-                "Reminder sent to %s but failed to mark row %s as sent on %s; "
+                "Reminder sent to %s but failed to mark row %s as sent at %s; "
                 "a duplicate reminder may be sent next cycle",
                 phone_jid,
                 row_number,
-                today_str,
+                sent_at_str,
             )
 
     @staticmethod
