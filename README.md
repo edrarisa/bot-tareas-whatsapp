@@ -18,9 +18,11 @@ Bot de WhatsApp con dos funciones, en varios grupos (uno por cliente):
    `GOOGLE_CREDENTIALS_PATH` (por defecto `secrets/google-service-account.json`).
 4. Crear el Google Sheet **central de configuración** (el que apunta `GOOGLE_SHEETS_ID`) con dos
    pestañas:
-   - **Equipo**: columnas `Nombre | Numero | Sheet ID` (número sin `+` ni espacios, ej.
-     `573001112233`; el Sheet ID es el de la hoja personal de esa persona -- se puede dejar vacío
-     hasta que la tenga lista, el bot avisará en el grupo si falta).
+   - **Equipo**: columnas `Nombre | Numero | Sheet ID | Sheet drive` (número sin `+` ni espacios,
+     ej. `573001112233`; el Sheet ID es el de la hoja personal de esa persona -- se puede dejar
+     vacío hasta que la tenga lista, el bot avisará en el grupo si falta. "Sheet drive" es opcional:
+     si se llena con el link completo a esa hoja de Drive, los recordatorios de tareas urgentes
+     incluyen ese link para que la persona pueda abrir su Sheet directo desde WhatsApp).
    - **Grupos**: columnas `Grupo | Cliente | Nombre del grupo` (el JID del grupo de WhatsApp, el
      nombre del cliente que se usará como nombre de pestaña, y un tercer campo libre solo para tu
      referencia).

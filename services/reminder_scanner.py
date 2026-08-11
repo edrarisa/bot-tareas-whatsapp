@@ -64,15 +64,17 @@ class ReminderScanner:
             return
         five_pm_open = now.hour >= _FIVE_PM_HOUR
 
-        for name, phone, sheet_id in self._sheets_client.read_team_roster():
+        for entry in self._sheets_client.read_team_roster():
+            name, phone, sheet_id = entry[0], entry[1], entry[2]
+            sheet_url = entry[3] if len(entry) > 3 else ""
             if not sheet_id:
                 continue
             try:
-                self._scan_member(sheet_id, phone, now, noon_open, five_pm_open)
+                self._scan_member(sheet_id, phone, sheet_url, now, noon_open, five_pm_open)
             except Exception:
                 logger.exception("Failed to scan reminders for %s (sheet %s)", name, sheet_id)
 
-    def _scan_member(self, sheet_id, phone, now, noon_open, five_pm_open) -> None:
+    def _scan_member(self, sheet_id, phone, sheet_url, now, noon_open, five_pm_open) -> None:
         spreadsheet = self._gspread_client.open_by_key(sheet_id)
         phone_jid = f"{phone}@s.whatsapp.net"
         for worksheet in spreadsheet.worksheets():
@@ -81,11 +83,19 @@ class ReminderScanner:
             for offset, row in enumerate(rows):
                 row_number = offset + 2  # 1 header row, gspread rows are 1-indexed
                 self._scan_row(
-                    worksheet, row, row_number, client_name, phone_jid, now, noon_open, five_pm_open
+                    worksheet,
+                    row,
+                    row_number,
+                    client_name,
+                    phone_jid,
+                    sheet_url,
+                    now,
+                    noon_open,
+                    five_pm_open,
                 )
 
     def _scan_row(
-        self, worksheet, row, row_number, client_name, phone_jid, now, noon_open, five_pm_open
+        self, worksheet, row, row_number, client_name, phone_jid, sheet_url, now, noon_open, five_pm_open
     ) -> None:
         if len(row) <= _COL_URGENTE or row[_COL_URGENTE] != _URGENT_YES:
             return
@@ -116,22 +126,46 @@ class ReminderScanner:
         alerta_12pm = row[_COL_ALERTA_12PM] if len(row) > _COL_ALERTA_12PM else ""
         if noon_open and not alerta_12pm.startswith(today_str):
             self._send_and_mark(
-                worksheet, row_number, _COL_ALERTA_12PM, phone_jid, client_name, description, sent_at_str
+                worksheet,
+                row_number,
+                _COL_ALERTA_12PM,
+                phone_jid,
+                client_name,
+                description,
+                sheet_url,
+                sent_at_str,
             )
 
         alerta_5pm = row[_COL_ALERTA_5PM] if len(row) > _COL_ALERTA_5PM else ""
         if five_pm_open and not alerta_5pm.startswith(today_str):
             self._send_and_mark(
-                worksheet, row_number, _COL_ALERTA_5PM, phone_jid, client_name, description, sent_at_str
+                worksheet,
+                row_number,
+                _COL_ALERTA_5PM,
+                phone_jid,
+                client_name,
+                description,
+                sheet_url,
+                sent_at_str,
             )
 
     def _send_and_mark(
-        self, worksheet, row_number, alert_col, phone_jid, client_name, description, sent_at_str
+        self,
+        worksheet,
+        row_number,
+        alert_col,
+        phone_jid,
+        client_name,
+        description,
+        sheet_url,
+        sent_at_str,
     ) -> None:
         message = (
             f'⏰ Recordatorio: tienes pendiente la tarea urgente de *{client_name}*: '
             f'"{description}". Márcala como "Completada" en tu Sheet cuando la termines.'
         )
+        if sheet_url:
+            message = f"{message}\n{sheet_url}"
         try:
             self._send_message(phone_jid, message)
         except Exception:

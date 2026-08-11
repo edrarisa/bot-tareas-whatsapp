@@ -14,7 +14,7 @@ class SheetsClient:
     def __init__(self, spreadsheet):
         self._spreadsheet = spreadsheet
 
-    def read_team_roster(self) -> list[tuple[str, str, str]]:
+    def read_team_roster(self) -> list[tuple[str, str, str, str]]:
         worksheet = self._spreadsheet.worksheet("Equipo")
         rows = worksheet.get_all_values()[1:]
         result = []
@@ -22,7 +22,8 @@ class SheetsClient:
             if len(row) < 2 or not row[0].strip() or not row[1].strip():
                 continue
             sheet_id = row[2].strip() if len(row) >= 3 else ""
-            result.append((row[0], row[1], sheet_id))
+            sheet_url = row[3].strip() if len(row) >= 4 else ""
+            result.append((row[0], row[1], sheet_id, sheet_url))
         return result
 
     def read_group_mapping(self) -> list[tuple[str, str]]:

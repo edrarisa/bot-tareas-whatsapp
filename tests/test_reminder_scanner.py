@@ -114,6 +114,44 @@ def test_sends_noon_alert_for_urgent_incomplete_task_past_grace_period():
     assert worksheet.update_cell_calls == [(2, 8, "2026-08-10 12:30")]
 
 
+def test_includes_sheet_drive_link_in_message_when_present():
+    worksheet = FakeWorksheet("clinicachia", [_HEADERS, _row(fecha="2026-08-10 08:00")])
+    spreadsheet = FakeSpreadsheet([worksheet])
+    sheets_client = FakeSheetsClient(
+        [("Eduar", "573042747698", "sheet-eduar", "https://docs.google.com/spreadsheets/d/sheet-eduar")]
+    )
+    gspread_client = FakeGspreadClient({"sheet-eduar": spreadsheet})
+    sent = []
+    now = datetime(2026, 8, 10, 12, 30, tzinfo=TZ)
+    scanner = ReminderScanner(
+        sheets_client, gspread_client, lambda jid, text: sent.append((jid, text)), now_func=lambda: now
+    )
+
+    scanner.run_check()
+
+    assert len(sent) == 1
+    _, text = sent[0]
+    assert text.endswith("https://docs.google.com/spreadsheets/d/sheet-eduar")
+
+
+def test_omits_sheet_drive_link_when_not_configured():
+    worksheet = FakeWorksheet("clinicachia", [_HEADERS, _row(fecha="2026-08-10 08:00")])
+    spreadsheet = FakeSpreadsheet([worksheet])
+    sheets_client = FakeSheetsClient([("Eduar", "573042747698", "sheet-eduar")])
+    gspread_client = FakeGspreadClient({"sheet-eduar": spreadsheet})
+    sent = []
+    now = datetime(2026, 8, 10, 12, 30, tzinfo=TZ)
+    scanner = ReminderScanner(
+        sheets_client, gspread_client, lambda jid, text: sent.append((jid, text)), now_func=lambda: now
+    )
+
+    scanner.run_check()
+
+    assert len(sent) == 1
+    _, text = sent[0]
+    assert "docs.google.com" not in text
+
+
 def test_does_not_resend_noon_alert_same_day():
     worksheet = FakeWorksheet(
         "clinicachia", [_HEADERS, _row(fecha="2026-08-10 08:00", alerta_12pm="2026-08-10")]

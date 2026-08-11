@@ -33,9 +33,14 @@ class FakeSpreadsheet:
 def test_read_team_roster_skips_header_and_empty_rows():
     equipo = FakeWorksheet(
         values=[
-            ["Nombre", "Numero", "Sheet ID"],
-            ["Cristian", "573001112233", "sheet-cristian"],
-            ["Ana", "573004445566", "sheet-ana"],
+            ["Nombre", "Numero", "Sheet ID", "Sheet drive"],
+            [
+                "Cristian",
+                "573001112233",
+                "sheet-cristian",
+                "https://docs.google.com/spreadsheets/d/sheet-cristian",
+            ],
+            ["Ana", "573004445566", "sheet-ana", "https://docs.google.com/spreadsheets/d/sheet-ana"],
             [""],
         ]
     )
@@ -44,26 +49,43 @@ def test_read_team_roster_skips_header_and_empty_rows():
     roster = client.read_team_roster()
 
     assert roster == [
-        ("Cristian", "573001112233", "sheet-cristian"),
-        ("Ana", "573004445566", "sheet-ana"),
+        (
+            "Cristian",
+            "573001112233",
+            "sheet-cristian",
+            "https://docs.google.com/spreadsheets/d/sheet-cristian",
+        ),
+        ("Ana", "573004445566", "sheet-ana", "https://docs.google.com/spreadsheets/d/sheet-ana"),
     ]
 
 
 def test_read_team_roster_skips_rows_with_blank_number():
     equipo = FakeWorksheet(
         values=[
-            ["Nombre", "Numero", "Sheet ID"],
-            ["Cristian", "573001112233", "sheet-cristian"],
-            ["Ana", "", "sheet-ana"],
-            ["   ", "573004445566", "sheet-x"],
-            ["Pablo", "   ", "sheet-pablo"],
+            ["Nombre", "Numero", "Sheet ID", "Sheet drive"],
+            [
+                "Cristian",
+                "573001112233",
+                "sheet-cristian",
+                "https://docs.google.com/spreadsheets/d/sheet-cristian",
+            ],
+            ["Ana", "", "sheet-ana", "https://docs.google.com/spreadsheets/d/sheet-ana"],
+            ["   ", "573004445566", "sheet-x", "https://docs.google.com/spreadsheets/d/sheet-x"],
+            ["Pablo", "   ", "sheet-pablo", "https://docs.google.com/spreadsheets/d/sheet-pablo"],
         ]
     )
     client = SheetsClient(FakeSpreadsheet({"Equipo": equipo}))
 
     roster = client.read_team_roster()
 
-    assert roster == [("Cristian", "573001112233", "sheet-cristian")]
+    assert roster == [
+        (
+            "Cristian",
+            "573001112233",
+            "sheet-cristian",
+            "https://docs.google.com/spreadsheets/d/sheet-cristian",
+        )
+    ]
 
 
 def test_read_team_roster_tolerates_missing_sheet_id_column():
@@ -77,7 +99,21 @@ def test_read_team_roster_tolerates_missing_sheet_id_column():
 
     roster = client.read_team_roster()
 
-    assert roster == [("Cristian", "573001112233", "")]
+    assert roster == [("Cristian", "573001112233", "", "")]
+
+
+def test_read_team_roster_tolerates_missing_sheet_drive_column():
+    equipo = FakeWorksheet(
+        values=[
+            ["Nombre", "Numero", "Sheet ID"],
+            ["Cristian", "573001112233", "sheet-cristian"],
+        ]
+    )
+    client = SheetsClient(FakeSpreadsheet({"Equipo": equipo}))
+
+    roster = client.read_team_roster()
+
+    assert roster == [("Cristian", "573001112233", "sheet-cristian", "")]
 
 
 def test_read_group_mapping_skips_header_and_empty_rows():

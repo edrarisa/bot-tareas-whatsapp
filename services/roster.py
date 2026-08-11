@@ -28,7 +28,7 @@ class Roster:
             logger.warning("Failed to refresh roster, using stale cache", exc_info=True)
             return
         self._by_phone = {
-            self._normalize(number): (name, sheet_id) for name, number, sheet_id in rows
+            self._normalize(row[1]): (row[0], row[2] if len(row) > 2 else "") for row in rows
         }
         self._loaded_at = now
 
