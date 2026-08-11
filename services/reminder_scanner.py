@@ -7,6 +7,7 @@ created. Already-sent alerts are tracked in the Sheet itself (the
 so restarting the bot never duplicates or loses an alert.
 """
 import logging
+import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -16,8 +17,12 @@ logger = logging.getLogger(__name__)
 
 _URGENT_YES = "Sí"
 _STATUS_COMPLETED = "Completada"
-_MIN_HOURS_SINCE_CREATION = 2
-_NOON_HOUR = 12
+# Overridable via env vars for testing in production without touching code
+# or breaking the test suite (which relies on these defaults). Unset in
+# normal operation -- defaults match the design spec (2h grace period,
+# noon/5pm windows).
+_MIN_MINUTES_SINCE_CREATION = float(os.getenv("REMINDER_MIN_MINUTES_SINCE_CREATION", "120"))
+_NOON_HOUR = int(os.getenv("REMINDER_NOON_HOUR", "12"))
 _FIVE_PM_HOUR = 17
 
 # Column indices (0-based), matching PersonalTaskWriter._HEADERS order:
@@ -86,7 +91,7 @@ class ReminderScanner:
                 row_number,
             )
             return
-        if now - created_at < timedelta(hours=_MIN_HOURS_SINCE_CREATION):
+        if now - created_at < timedelta(minutes=_MIN_MINUTES_SINCE_CREATION):
             return
 
         today_str = now.date().isoformat()
