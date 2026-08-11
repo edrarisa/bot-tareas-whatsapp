@@ -9,6 +9,7 @@ for urgent tasks that need a WhatsApp reminder.
 """
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
@@ -41,7 +42,10 @@ async def lifespan(app: FastAPI):
     app.state.image_batch_buffer = ImageBatchBuffer()
 
     reminder_scanner = create_reminder_scanner(sheets_client, Config.GOOGLE_CREDENTIALS_PATH)
-    reminder_task = asyncio.create_task(run_reminder_loop(reminder_scanner))
+    reminder_interval_seconds = int(os.getenv("REMINDER_INTERVAL_SECONDS", "900"))
+    reminder_task = asyncio.create_task(
+        run_reminder_loop(reminder_scanner, interval_seconds=reminder_interval_seconds)
+    )
     try:
         yield
     finally:
