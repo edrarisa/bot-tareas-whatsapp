@@ -45,11 +45,22 @@ class ReminderScanner:
 
     def run_check(self) -> None:
         now = self._now_func()
+        logger.info(
+            "Reminder check starting: now=%s weekday=%s min_minutes_since_creation=%s noon_hour=%s",
+            now.isoformat(),
+            now.weekday(),
+            _MIN_MINUTES_SINCE_CREATION,
+            _NOON_HOUR,
+        )
         if now.weekday() >= 5:
+            logger.info("Reminder check skipped: it's the weekend")
             return
 
         noon_open = now.hour >= _NOON_HOUR
         if not noon_open:
+            logger.info(
+                "Reminder check skipped: hour %s is before the noon window (%s)", now.hour, _NOON_HOUR
+            )
             return
         five_pm_open = now.hour >= _FIVE_PM_HOUR
 
@@ -121,6 +132,9 @@ class ReminderScanner:
         except Exception:
             logger.exception("Failed to send reminder to %s", phone_jid)
             return
+        logger.info(
+            "Sent urgent-task reminder to %s for client %s (row %s)", phone_jid, client_name, row_number
+        )
         try:
             worksheet.update_cell(row_number, alert_col + 1, today_str)
         except Exception:
