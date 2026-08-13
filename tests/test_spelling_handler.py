@@ -66,6 +66,24 @@ def test_ignores_image_from_unknown_sender(monkeypatch):
     _run(_payload("revisar ortografia"), roster, lid_resolver)
 
 
+def test_logs_when_sender_is_unrecognized(monkeypatch, caplog):
+    """Covers the real-world case where a sender's WhatsApp "@lid" couldn't
+    be resolved to their phone number (e.g. their number-privacy setting
+    blocks it) -- their image is silently dropped, but this should at
+    least be visible in the logs instead of leaving no trace at all."""
+    roster = FakeRoster({})
+    lid_resolver = FakeLidResolver()
+    monkeypatch.setattr(
+        "handlers.spelling_handler.review_spelling",
+        lambda *a, **kw: (_ for _ in ()).throw(AssertionError("should not review")),
+    )
+
+    with caplog.at_level("INFO"):
+        _run(_payload("revisar ortografia"), roster, lid_resolver)
+
+    assert any("unrecognized sender" in r.message for r in caplog.records)
+
+
 def test_ignores_image_from_unmapped_group(monkeypatch):
     roster = FakeRoster({SENDER_JID: True})
     lid_resolver = FakeLidResolver()
@@ -131,7 +149,25 @@ def test_a1_code_also_triggers_review(monkeypatch):
 
     _run(_payload("a1"), roster, lid_resolver)
 
-    assert len(sent) == 1
+    assert len(sent) == 2
+
+
+def test_sends_a_starting_message_before_reviewing(monkeypatch):
+    roster = FakeRoster({SENDER_JID: True})
+    lid_resolver = FakeLidResolver()
+    monkeypatch.setattr(
+        "handlers.spelling_handler.review_spelling",
+        lambda *a, **kw: SpellingReviewResult(has_errors=False, details=["Sin errores"]),
+    )
+    sent = []
+    monkeypatch.setattr(
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
+    )
+
+    _run(_payload("revisar ortografia"), roster, lid_resolver)
+
+    assert len(sent) == 2
+    assert "revisando" in sent[0].lower()
 
 
 def test_keyword_matching_ignores_case_and_accents(monkeypatch):
@@ -148,7 +184,7 @@ def test_keyword_matching_ignores_case_and_accents(monkeypatch):
 
     _run(_payload("Porfa ORTOGRAFÍA de esto"), roster, lid_resolver)
 
-    assert len(sent) == 1
+    assert len(sent) == 2
 
 
 def test_resolves_lid_sender_before_matching_roster(monkeypatch):
@@ -166,7 +202,7 @@ def test_resolves_lid_sender_before_matching_roster(monkeypatch):
 
     _run(_payload("revisar ortografia", sender_jid=sender_lid), roster, lid_resolver)
 
-    assert len(sent) == 1
+    assert len(sent) == 2
 
 
 def test_replies_with_errors_when_found(monkeypatch):
@@ -190,8 +226,8 @@ def test_replies_with_errors_when_found(monkeypatch):
 
     _run(_payload("revisar ortografia"), roster, lid_resolver)
 
-    assert len(sent) == 1
-    group_jid, text = sent[0]
+    assert len(sent) == 2
+    group_jid, text = sent[-1]
     assert group_jid == GROUP_JID
     assert "posibles errores" in text.lower()
     assert "• 'campana' deberia ser 'campaña'" in text
@@ -212,8 +248,8 @@ def test_replies_confirming_no_errors(monkeypatch):
 
     _run(_payload("revisar ortografia"), roster, lid_resolver)
 
-    assert len(sent) == 1
-    assert "no encontré errores" in sent[0].lower()
+    assert len(sent) == 2
+    assert "no encontré errores" in sent[-1].lower()
 
 
 def test_tags_the_sender_in_the_reply(monkeypatch):
@@ -231,8 +267,8 @@ def test_tags_the_sender_in_the_reply(monkeypatch):
 
     _run(_payload("revisar ortografia"), roster, lid_resolver)
 
-    assert len(sent) == 1
-    text, mentioned = sent[0]
+    assert len(sent) == 2
+    text, mentioned = sent[-1]
     assert text.startswith("@573001112233 ")
     assert mentioned == [SENDER_JID]
 
@@ -253,8 +289,8 @@ def test_omits_mention_when_sender_jid_is_unresolved(monkeypatch):
 
     _run(_payload("revisar ortografia", sender_jid=unresolved_lid), roster, lid_resolver)
 
-    assert len(sent) == 1
-    text, mentioned = sent[0]
+    assert len(sent) == 2
+    text, mentioned = sent[-1]
     assert not text.startswith("@")
     assert mentioned == []
 
@@ -274,7 +310,9 @@ def test_ignores_review_errors_without_replying(monkeypatch):
 
     _run(_payload("revisar ortografia"), roster, lid_resolver)
 
-    assert sent == []
+    # Only the "reviewing now" message went out -- no error content leaked
+    # to the group when the review itself failed.
+    assert len(sent) == 1
 
 
 def test_truncates_long_error_messages_in_logs(monkeypatch, caplog):
@@ -293,7 +331,7 @@ def test_truncates_long_error_messages_in_logs(monkeypatch, caplog):
     with caplog.at_level("ERROR"):
         _run(_payload("revisar ortografia"), roster, lid_resolver)
 
-    assert sent == []
+    assert len(sent) == 1
     error_records = [r for r in caplog.records if r.levelname == "ERROR"]
     assert len(error_records) == 1
     assert len(error_records[0].message) < 500
@@ -388,7 +426,7 @@ def test_multiple_images_from_same_sender_are_batched_and_all_reviewed(monkeypat
     first_call.join(timeout=2)
 
     assert sorted(reviewed_images) == ["aW1hZ2Ux", "aW1hZ2Uy"]
-    assert len(sent) == 2
+    assert len(sent) == 3
     assert any("Imagen 1 de 2:" in text for text in sent)
     assert any("Imagen 2 de 2:" in text for text in sent)
 
@@ -407,8 +445,8 @@ def test_single_image_reply_has_no_numbering_prefix(monkeypatch):
 
     _run(_payload("revisar ortografia"), roster, lid_resolver)
 
-    assert len(sent) == 1
-    assert "Imagen" not in sent[0]
+    assert len(sent) == 2
+    assert all("Imagen" not in text for text in sent)
 
 
 def test_batch_without_keyword_in_any_image_is_ignored(monkeypatch):
@@ -524,7 +562,7 @@ def test_images_from_the_same_sender_in_different_groups_are_not_batched_togethe
     # Each image was reviewed as its own batch of one -- neither reply is
     # numbered, and each was sent to its own group.
     assert sorted(reviewed_images) == ["aW1hZ2Ux", "aW1hZ2Uy"]
-    assert len(sent) == 2
+    assert len(sent) == 4
     for group_jid, text in sent:
         assert "Imagen" not in text
     sent_groups = {g for g, _ in sent}

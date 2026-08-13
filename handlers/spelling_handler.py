@@ -2,9 +2,10 @@
 Orchestrates incoming image messages: parse -> filter (group registered,
 known sender, not from_me) -> buffer briefly so images sent together in one
 WhatsApp multi-image send are grouped -> if any image in the group has a
-trigger keyword in its caption, review every image in the group with
-OpenAI -> reply in the group once per image, numbered when the group has
-more than one image and tagging (@) whoever sent it.
+trigger keyword in its caption, send a short "reviewing now" message, then
+review every image in the group with OpenAI -> reply in the group once
+per image, numbered when the group has more than one image and tagging
+(@) whoever sent it.
 
 WhatsApp delivers a multi-image send as separate messages (often as
 separate webhook calls), and typically only one of them carries the
@@ -64,6 +65,14 @@ def _handle_image_message(
     sender_jid = lid_resolver.resolve(message.sender_jid, message.group_jid)
 
     if not roster.is_known_sender(sender_jid):
+        logger.info(
+            "Ignoring image from unrecognized sender %s (resolved from %s) in group %s -- if this "
+            "person is in the roster, their WhatsApp phone-number privacy setting may be blocking "
+            "LID resolution",
+            sender_jid,
+            message.sender_jid,
+            message.group_jid,
+        )
         return
 
     batch_key = (sender_jid, message.group_jid)
@@ -77,6 +86,8 @@ def _handle_image_message(
 
     if not any(_has_trigger_keyword(m.caption) for m in batch):
         return
+
+    send_text_message(message.group_jid, "⏳ Revisando la ortografía, dame un momento...")
 
     total = len(batch)
     for index, image_message in enumerate(batch, start=1):
