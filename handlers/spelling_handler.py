@@ -23,7 +23,7 @@ from services.spelling_reviewer import SpellingReviewError, review_spelling
 
 logger = logging.getLogger(__name__)
 
-_KEYWORDS = ("ortografia", "u56")
+_KEYWORDS = ("ortografia", "a1")
 
 # How long to wait after an image arrives to see if sibling images from the
 # same sender show up before deciding whether to process the batch.

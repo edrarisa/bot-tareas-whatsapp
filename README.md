@@ -5,7 +5,7 @@ Bot de WhatsApp con dos funciones, en varios grupos (uno por cliente):
    registra en el Google Sheet personal de esa persona, en la pestaña del cliente correspondiente.
    Ver `docs/superpowers/specs/2026-07-23-task-bot-whatsapp-design.md` y
    `docs/superpowers/specs/2026-08-06-multi-client-task-routing-design.md`.
-2. Cuando alguien del equipo manda una imagen con la palabra "ortografía" (o el código "u56") en el
+2. Cuando alguien del equipo manda una imagen con la palabra "ortografía" (o el código "a1") en el
    texto, revisa la ortografía en español de la imagen con OpenAI y responde en el grupo. Ver
    `docs/superpowers/specs/2026-08-05-image-spelling-review-design.md`.
 

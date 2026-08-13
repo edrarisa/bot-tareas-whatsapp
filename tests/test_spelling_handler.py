@@ -117,7 +117,7 @@ def test_ignores_image_without_keyword_in_caption(monkeypatch):
     _run(_payload("aqui esta el diseño final"), roster, lid_resolver)
 
 
-def test_u56_code_also_triggers_review(monkeypatch):
+def test_a1_code_also_triggers_review(monkeypatch):
     roster = FakeRoster({SENDER_JID: True})
     lid_resolver = FakeLidResolver()
     monkeypatch.setattr(
@@ -129,7 +129,7 @@ def test_u56_code_also_triggers_review(monkeypatch):
         "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
     )
 
-    _run(_payload("u56"), roster, lid_resolver)
+    _run(_payload("a1"), roster, lid_resolver)
 
     assert len(sent) == 1
 
