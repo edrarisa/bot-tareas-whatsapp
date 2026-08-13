@@ -285,6 +285,38 @@ def test_send_text_message_posts_to_evolution_api(monkeypatch):
     assert calls[0]["headers"]["apikey"] == "test-key"
 
 
+def test_send_text_message_includes_mentioned_when_given(monkeypatch):
+    monkeypatch.setattr(Config, "EVOLUTION_API_URL", "https://evo.example.com")
+    monkeypatch.setattr(Config, "EVOLUTION_API_KEY", "test-key")
+    monkeypatch.setattr(Config, "EVOLUTION_INSTANCE", "my-instance")
+
+    calls = []
+
+    class FakeResponse:
+        ok = True
+        status_code = 200
+        text = ""
+
+        def raise_for_status(self):
+            pass
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        calls.append({"json": json})
+        return FakeResponse()
+
+    monkeypatch.setattr("services.evolution.requests.post", fake_post)
+
+    send_text_message(
+        "120363429440515454@g.us", "@573001112233 hola", mentioned=["573001112233@s.whatsapp.net"]
+    )
+
+    assert calls[0]["json"] == {
+        "number": "120363429440515454@g.us",
+        "text": "@573001112233 hola",
+        "mentioned": ["573001112233@s.whatsapp.net"],
+    }
+
+
 def test_send_text_message_raises_on_http_error(monkeypatch):
     monkeypatch.setattr(Config, "EVOLUTION_API_URL", "https://evo.example.com")
     monkeypatch.setattr(Config, "EVOLUTION_API_KEY", "test-key")

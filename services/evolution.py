@@ -157,11 +157,20 @@ def _parse_image_item(item: dict) -> IncomingImageMessage | None:
     )
 
 
-def send_text_message(group_jid: str, text: str) -> None:
-    """Sends a text message to a group JID via Evolution API."""
+def send_text_message(group_jid: str, text: str, mentioned: list[str] | None = None) -> None:
+    """Sends a text message to a group JID via Evolution API.
+
+    `mentioned`, if given, is a list of phone-number JIDs (e.g.
+    "573001112233@s.whatsapp.net") to render as tappable highlighted
+    mentions. WhatsApp doesn't insert the mention automatically -- `text`
+    must also contain "@<digits>" for each JID at the point where the
+    mention should appear.
+    """
     url = f"{Config.EVOLUTION_API_URL.rstrip('/')}/message/sendText/{Config.EVOLUTION_INSTANCE}"
     headers = {"apikey": Config.EVOLUTION_API_KEY, "Content-Type": "application/json"}
     payload = {"number": group_jid, "text": text}
+    if mentioned:
+        payload["mentioned"] = mentioned
     response = requests.post(url, headers=headers, json=payload, timeout=30)
     if not response.ok:
         logger.error(f"Evolution API error: {response.status_code} — {response.text}")

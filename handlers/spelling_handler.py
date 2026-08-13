@@ -4,7 +4,7 @@ known sender, not from_me) -> buffer briefly so images sent together in one
 WhatsApp multi-image send are grouped -> if any image in the group has a
 trigger keyword in its caption, review every image in the group with
 OpenAI -> reply in the group once per image, numbered when the group has
-more than one image.
+more than one image and tagging (@) whoever sent it.
 
 WhatsApp delivers a multi-image send as separate messages (often as
 separate webhook calls), and typically only one of them carries the
@@ -80,10 +80,21 @@ def _handle_image_message(
 
     total = len(batch)
     for index, image_message in enumerate(batch, start=1):
-        _review_and_reply(image_message, index, total)
+        _review_and_reply(image_message, index, total, sender_jid)
 
 
-def _review_and_reply(message, index: int, total: int) -> None:
+def _build_mention(sender_jid: str) -> tuple[str, list[str]]:
+    """Returns an "@<digits>" tag plus the matching `mentioned` list for
+    `send_text_message`, or ("", []) if `sender_jid` isn't a real
+    phone-number JID (e.g. an unresolved "@lid") -- WhatsApp can't render
+    a mention for those."""
+    if not sender_jid.endswith("@s.whatsapp.net"):
+        return "", []
+    digits = sender_jid.split("@", 1)[0]
+    return f"@{digits}", [sender_jid]
+
+
+def _review_and_reply(message, index: int, total: int, sender_jid: str) -> None:
     try:
         result = review_spelling(message.image_base64, message.mimetype)
     except SpellingReviewError as exc:
@@ -102,4 +113,8 @@ def _review_and_reply(message, index: int, total: int) -> None:
 
     reply = f"Imagen {index} de {total}:\n{body}" if total > 1 else body
 
-    send_text_message(message.group_jid, reply)
+    mention_tag, mentioned_jids = _build_mention(sender_jid)
+    if mention_tag:
+        reply = f"{mention_tag} {reply}"
+
+    send_text_message(message.group_jid, reply, mentioned=mentioned_jids)

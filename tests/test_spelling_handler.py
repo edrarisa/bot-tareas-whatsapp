@@ -76,7 +76,7 @@ def test_ignores_image_from_unmapped_group(monkeypatch):
     )
     sent = []
     monkeypatch.setattr(
-        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
     )
 
     _run(
@@ -98,7 +98,7 @@ def test_ignores_own_images(monkeypatch):
     )
     sent = []
     monkeypatch.setattr(
-        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
     )
 
     _run(_payload("revisar ortografia", from_me=True), roster, lid_resolver)
@@ -126,7 +126,7 @@ def test_u56_code_also_triggers_review(monkeypatch):
     )
     sent = []
     monkeypatch.setattr(
-        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
     )
 
     _run(_payload("u56"), roster, lid_resolver)
@@ -143,7 +143,7 @@ def test_keyword_matching_ignores_case_and_accents(monkeypatch):
     )
     sent = []
     monkeypatch.setattr(
-        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
     )
 
     _run(_payload("Porfa ORTOGRAFÍA de esto"), roster, lid_resolver)
@@ -161,7 +161,7 @@ def test_resolves_lid_sender_before_matching_roster(monkeypatch):
     )
     sent = []
     monkeypatch.setattr(
-        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
     )
 
     _run(_payload("revisar ortografia", sender_jid=sender_lid), roster, lid_resolver)
@@ -185,7 +185,7 @@ def test_replies_with_errors_when_found(monkeypatch):
     sent = []
     monkeypatch.setattr(
         "handlers.spelling_handler.send_text_message",
-        lambda g, t: sent.append((g, t)),
+        lambda g, t, mentioned=None: sent.append((g, t)),
     )
 
     _run(_payload("revisar ortografia"), roster, lid_resolver)
@@ -207,13 +207,56 @@ def test_replies_confirming_no_errors(monkeypatch):
     )
     sent = []
     monkeypatch.setattr(
-        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
     )
 
     _run(_payload("revisar ortografia"), roster, lid_resolver)
 
     assert len(sent) == 1
     assert "no encontré errores" in sent[0].lower()
+
+
+def test_tags_the_sender_in_the_reply(monkeypatch):
+    roster = FakeRoster({SENDER_JID: True})
+    lid_resolver = FakeLidResolver()
+    monkeypatch.setattr(
+        "handlers.spelling_handler.review_spelling",
+        lambda *a, **kw: SpellingReviewResult(has_errors=False, details=["Sin errores"]),
+    )
+    sent = []
+    monkeypatch.setattr(
+        "handlers.spelling_handler.send_text_message",
+        lambda g, t, mentioned=None: sent.append((t, mentioned)),
+    )
+
+    _run(_payload("revisar ortografia"), roster, lid_resolver)
+
+    assert len(sent) == 1
+    text, mentioned = sent[0]
+    assert text.startswith("@573001112233 ")
+    assert mentioned == [SENDER_JID]
+
+
+def test_omits_mention_when_sender_jid_is_unresolved(monkeypatch):
+    unresolved_lid = "151556578083034@lid"
+    roster = FakeRoster({unresolved_lid: True})
+    lid_resolver = FakeLidResolver()  # no mapping -- resolve() returns the "@lid" unchanged
+    monkeypatch.setattr(
+        "handlers.spelling_handler.review_spelling",
+        lambda *a, **kw: SpellingReviewResult(has_errors=False, details=["Sin errores"]),
+    )
+    sent = []
+    monkeypatch.setattr(
+        "handlers.spelling_handler.send_text_message",
+        lambda g, t, mentioned=None: sent.append((t, mentioned)),
+    )
+
+    _run(_payload("revisar ortografia", sender_jid=unresolved_lid), roster, lid_resolver)
+
+    assert len(sent) == 1
+    text, mentioned = sent[0]
+    assert not text.startswith("@")
+    assert mentioned == []
 
 
 def test_ignores_review_errors_without_replying(monkeypatch):
@@ -226,7 +269,7 @@ def test_ignores_review_errors_without_replying(monkeypatch):
     monkeypatch.setattr("handlers.spelling_handler.review_spelling", raise_error)
     sent = []
     monkeypatch.setattr(
-        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
     )
 
     _run(_payload("revisar ortografia"), roster, lid_resolver)
@@ -244,7 +287,7 @@ def test_truncates_long_error_messages_in_logs(monkeypatch, caplog):
     monkeypatch.setattr("handlers.spelling_handler.review_spelling", raise_error)
     sent = []
     monkeypatch.setattr(
-        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
     )
 
     with caplog.at_level("ERROR"):
@@ -266,7 +309,7 @@ def test_waits_before_deciding_whether_to_process(monkeypatch):
         "handlers.spelling_handler.review_spelling",
         lambda *a, **kw: SpellingReviewResult(has_errors=False, details=["Sin errores"]),
     )
-    monkeypatch.setattr("handlers.spelling_handler.send_text_message", lambda g, t: None)
+    monkeypatch.setattr("handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: None)
 
     sleep_calls = []
 
@@ -300,7 +343,7 @@ def test_multiple_images_from_same_sender_are_batched_and_all_reviewed(monkeypat
     monkeypatch.setattr("handlers.spelling_handler.review_spelling", fake_review)
     sent = []
     monkeypatch.setattr(
-        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
     )
 
     batch_buffer = ImageBatchBuffer()
@@ -346,8 +389,8 @@ def test_multiple_images_from_same_sender_are_batched_and_all_reviewed(monkeypat
 
     assert sorted(reviewed_images) == ["aW1hZ2Ux", "aW1hZ2Uy"]
     assert len(sent) == 2
-    assert any(text.startswith("Imagen 1 de 2:") for text in sent)
-    assert any(text.startswith("Imagen 2 de 2:") for text in sent)
+    assert any("Imagen 1 de 2:" in text for text in sent)
+    assert any("Imagen 2 de 2:" in text for text in sent)
 
 
 def test_single_image_reply_has_no_numbering_prefix(monkeypatch):
@@ -359,13 +402,13 @@ def test_single_image_reply_has_no_numbering_prefix(monkeypatch):
     )
     sent = []
     monkeypatch.setattr(
-        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
     )
 
     _run(_payload("revisar ortografia"), roster, lid_resolver)
 
     assert len(sent) == 1
-    assert not sent[0].startswith("Imagen")
+    assert "Imagen" not in sent[0]
 
 
 def test_batch_without_keyword_in_any_image_is_ignored(monkeypatch):
@@ -378,7 +421,7 @@ def test_batch_without_keyword_in_any_image_is_ignored(monkeypatch):
     )
     sent = []
     monkeypatch.setattr(
-        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append(t)
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
     )
 
     batch_buffer = ImageBatchBuffer()
@@ -438,7 +481,7 @@ def test_images_from_the_same_sender_in_different_groups_are_not_batched_togethe
     monkeypatch.setattr("handlers.spelling_handler.review_spelling", fake_review)
     sent = []
     monkeypatch.setattr(
-        "handlers.spelling_handler.send_text_message", lambda g, t: sent.append((g, t))
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append((g, t))
     )
 
     batch_buffer = ImageBatchBuffer()
@@ -483,6 +526,6 @@ def test_images_from_the_same_sender_in_different_groups_are_not_batched_togethe
     assert sorted(reviewed_images) == ["aW1hZ2Ux", "aW1hZ2Uy"]
     assert len(sent) == 2
     for group_jid, text in sent:
-        assert not text.startswith("Imagen")
+        assert "Imagen" not in text
     sent_groups = {g for g, _ in sent}
     assert sent_groups == {GROUP_JID, OTHER_GROUP_JID}
