@@ -4,8 +4,8 @@ import pytest
 import requests
 
 from services.evolution import (
-    IncomingImageMessage,
-    parse_image_messages,
+    IncomingReviewableMessage,
+    parse_reviewable_messages,
     parse_webhook_payload,
     send_text_message,
 )
@@ -353,13 +353,13 @@ def test_parses_image_message_with_caption_and_base64():
             },
         }
     }
-    messages = parse_image_messages(payload)
+    messages = parse_reviewable_messages(payload)
     assert len(messages) == 1
     message = messages[0]
     assert message.group_jid == "120363429440515454@g.us"
     assert message.sender_jid == "573001112233@s.whatsapp.net"
     assert message.caption == "revisar ortografía porfa"
-    assert message.image_base64 == "aGVsbG8="
+    assert message.file_base64 == "aGVsbG8="
     assert message.mimetype == "image/png"
     assert message.from_me is False
 
@@ -371,7 +371,7 @@ def test_defaults_mimetype_when_missing():
             "message": {"imageMessage": {"caption": "ortografia"}, "base64": "aGVsbG8="},
         }
     }
-    messages = parse_image_messages(payload)
+    messages = parse_reviewable_messages(payload)
     assert messages[0].mimetype == "image/jpeg"
 
 
@@ -382,7 +382,7 @@ def test_defaults_caption_to_empty_string_when_missing():
             "message": {"imageMessage": {}, "base64": "aGVsbG8="},
         }
     }
-    messages = parse_image_messages(payload)
+    messages = parse_reviewable_messages(payload)
     assert messages[0].caption == ""
 
 
@@ -393,7 +393,7 @@ def test_returns_empty_list_when_no_base64_content():
             "message": {"imageMessage": {"caption": "ortografia"}},
         }
     }
-    assert parse_image_messages(payload) == []
+    assert parse_reviewable_messages(payload) == []
 
 
 def test_returns_empty_list_when_no_image_message():
@@ -403,7 +403,7 @@ def test_returns_empty_list_when_no_image_message():
             "message": {"conversation": "hola", "base64": "aGVsbG8="},
         }
     }
-    assert parse_image_messages(payload) == []
+    assert parse_reviewable_messages(payload) == []
 
 
 def test_returns_empty_list_when_no_remote_jid():
@@ -413,7 +413,7 @@ def test_returns_empty_list_when_no_remote_jid():
             "message": {"imageMessage": {"caption": "ortografia"}, "base64": "aGVsbG8="},
         }
     }
-    assert parse_image_messages(payload) == []
+    assert parse_reviewable_messages(payload) == []
 
 
 def test_parses_image_data_as_a_list():
@@ -429,7 +429,7 @@ def test_parses_image_data_as_a_list():
             },
         ]
     }
-    messages = parse_image_messages(payload)
+    messages = parse_reviewable_messages(payload)
     assert len(messages) == 2
     assert messages[0].caption == "ortografia 1"
     assert messages[1].caption == "ortografia 2"
@@ -442,7 +442,7 @@ def test_handles_explicit_null_key_for_images():
             "message": {"imageMessage": {"caption": "ortografia"}, "base64": "aGVsbG8="},
         }
     }
-    assert parse_image_messages(payload) == []
+    assert parse_reviewable_messages(payload) == []
 
 
 def test_handles_explicit_null_message_for_images():
@@ -452,7 +452,7 @@ def test_handles_explicit_null_message_for_images():
             "message": None,
         }
     }
-    assert parse_image_messages(payload) == []
+    assert parse_reviewable_messages(payload) == []
 
 
 def test_skips_unparseable_image_items_in_a_list_but_keeps_the_rest():
@@ -465,6 +465,112 @@ def test_skips_unparseable_image_items_in_a_list_but_keeps_the_rest():
             },
         ]
     }
-    messages = parse_image_messages(payload)
+    messages = parse_reviewable_messages(payload)
     assert len(messages) == 1
     assert messages[0].caption == "este si sirve"
+
+
+def test_parses_pdf_document_message_with_caption_and_base64():
+    payload = {
+        "data": {
+            "key": {
+                "remoteJid": "120363429440515454@g.us",
+                "participant": "573001112233@s.whatsapp.net",
+                "fromMe": False,
+            },
+            "message": {
+                "documentMessage": {
+                    "caption": "revisar ortografía porfa",
+                    "mimetype": "application/pdf",
+                    "fileName": "propuesta.pdf",
+                },
+                "base64": "aGVsbG8=",
+            },
+        }
+    }
+    messages = parse_reviewable_messages(payload)
+    assert len(messages) == 1
+    message = messages[0]
+    assert message.group_jid == "120363429440515454@g.us"
+    assert message.sender_jid == "573001112233@s.whatsapp.net"
+    assert message.caption == "revisar ortografía porfa"
+    assert message.file_base64 == "aGVsbG8="
+    assert message.mimetype == "application/pdf"
+    assert message.filename == "propuesta.pdf"
+    assert message.from_me is False
+
+
+def test_defaults_pdf_filename_when_missing():
+    payload = {
+        "data": {
+            "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+            "message": {
+                "documentMessage": {"caption": "a1", "mimetype": "application/pdf"},
+                "base64": "aGVsbG8=",
+            },
+        }
+    }
+    messages = parse_reviewable_messages(payload)
+    assert messages[0].filename == "documento.pdf"
+
+
+def test_image_messages_have_no_filename():
+    payload = {
+        "data": {
+            "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+            "message": {"imageMessage": {"caption": "ortografia"}, "base64": "aGVsbG8="},
+        }
+    }
+    messages = parse_reviewable_messages(payload)
+    assert messages[0].filename is None
+
+
+def test_ignores_non_pdf_document_messages():
+    payload = {
+        "data": {
+            "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+            "message": {
+                "documentMessage": {
+                    "caption": "ortografia",
+                    "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "fileName": "informe.docx",
+                },
+                "base64": "aGVsbG8=",
+            },
+        }
+    }
+    assert parse_reviewable_messages(payload) == []
+
+
+def test_returns_empty_list_when_no_base64_content_for_pdf():
+    payload = {
+        "data": {
+            "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+            "message": {
+                "documentMessage": {"caption": "ortografia", "mimetype": "application/pdf"}
+            },
+        }
+    }
+    assert parse_reviewable_messages(payload) == []
+
+
+def test_parses_mixed_image_and_pdf_data_as_a_list():
+    payload = {
+        "data": [
+            {
+                "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+                "message": {"imageMessage": {"caption": "ortografia 1"}, "base64": "aGVsbG8="},
+            },
+            {
+                "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+                "message": {
+                    "documentMessage": {"caption": "a1", "mimetype": "application/pdf"},
+                    "base64": "d29ybGQ=",
+                },
+            },
+        ]
+    }
+    messages = parse_reviewable_messages(payload)
+    assert len(messages) == 2
+    assert messages[0].mimetype == "image/jpeg"
+    assert messages[1].mimetype == "application/pdf"

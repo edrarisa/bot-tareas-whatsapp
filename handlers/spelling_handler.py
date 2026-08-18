@@ -1,24 +1,24 @@
 """
-Orchestrates incoming image messages: parse -> filter (group registered,
-known sender, not from_me) -> buffer briefly so images sent together in one
-WhatsApp multi-image send are grouped -> if any image in the group has a
-trigger keyword in its caption, send a short "reviewing now" message, then
-review every image in the group with OpenAI -> reply in the group once
-per image, numbered when the group has more than one image and tagging
+Orchestrates incoming image/PDF messages: parse -> filter (group registered,
+known sender, not from_me) -> buffer briefly so several files sent together
+in one WhatsApp multi-file send are grouped -> if any file in the group has
+a trigger keyword in its caption, send a short "reviewing now" message,
+then review every file in the group with OpenAI -> reply in the group once
+per file, numbered when the group has more than one file and tagging
 (@) whoever sent it.
 
 WhatsApp delivers a multi-image send as separate messages (often as
 separate webhook calls), and typically only one of them carries the
 caption text -- the rest arrive with no caption at all. The batch buffer
 exists to catch those caption-less siblings instead of silently ignoring
-them. Batches are keyed by (sender, group) so images sent to two
+them. Batches are keyed by (sender, group) so files sent to two
 different client groups around the same time never mix into one batch.
 """
 import logging
 import time
 import unicodedata
 
-from services.evolution import parse_image_messages, send_text_message
+from services.evolution import parse_reviewable_messages, send_text_message
 from services.image_batch import ImageBatchBuffer
 from services.spelling_reviewer import SpellingReviewError, review_spelling
 
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 _KEYWORDS = ("ortografia", "a1")
 
-# How long to wait after an image arrives to see if sibling images from the
+# How long to wait after a file arrives to see if sibling files from the
 # same sender show up before deciding whether to process the batch.
 _BATCH_WINDOW_SECONDS = 4.0
 
@@ -39,8 +39,8 @@ def handle_webhook_payload(
     batch_buffer: ImageBatchBuffer,
     sleep=time.sleep,
 ) -> None:
-    for message in parse_image_messages(payload):
-        _handle_image_message(message, roster, lid_resolver, group_registry, batch_buffer, sleep)
+    for message in parse_reviewable_messages(payload):
+        _handle_reviewable_message(message, roster, lid_resolver, group_registry, batch_buffer, sleep)
 
 
 def _normalize(text: str) -> str:
@@ -53,7 +53,7 @@ def _has_trigger_keyword(caption: str) -> bool:
     return any(keyword in normalized for keyword in _KEYWORDS)
 
 
-def _handle_image_message(
+def _handle_reviewable_message(
     message, roster, lid_resolver, group_registry, batch_buffer: ImageBatchBuffer, sleep
 ) -> None:
     if message.from_me:
@@ -66,7 +66,7 @@ def _handle_image_message(
 
     if not roster.is_known_sender(sender_jid):
         logger.info(
-            "Ignoring image from unrecognized sender %s (resolved from %s) in group %s -- if this "
+            "Ignoring file from unrecognized sender %s (resolved from %s) in group %s -- if this "
             "person is in the roster, their WhatsApp phone-number privacy setting may be blocking "
             "LID resolution",
             sender_jid,
@@ -80,7 +80,7 @@ def _handle_image_message(
     sleep(_BATCH_WINDOW_SECONDS)
     batch = batch_buffer.try_claim(batch_key, len(snapshot))
     if batch is None:
-        # A later image in the same batch is responsible for processing
+        # A later file in the same batch is responsible for processing
         # the whole group -- nothing to do here.
         return
 
@@ -90,8 +90,8 @@ def _handle_image_message(
     send_text_message(message.group_jid, "⏳ Revisando la ortografía, dame un momento...")
 
     total = len(batch)
-    for index, image_message in enumerate(batch, start=1):
-        _review_and_reply(image_message, index, total, sender_jid)
+    for index, reviewable_message in enumerate(batch, start=1):
+        _review_and_reply(reviewable_message, index, total, sender_jid)
 
 
 def _build_mention(sender_jid: str) -> tuple[str, list[str]]:
@@ -107,7 +107,7 @@ def _build_mention(sender_jid: str) -> tuple[str, list[str]]:
 
 def _review_and_reply(message, index: int, total: int, sender_jid: str) -> None:
     try:
-        result = review_spelling(message.image_base64, message.mimetype)
+        result = review_spelling(message.file_base64, message.mimetype, message.filename)
     except SpellingReviewError as exc:
         logger.error(
             "Spelling review failed for message from %s: %s",
@@ -122,7 +122,7 @@ def _review_and_reply(message, index: int, total: int, sender_jid: str) -> None:
     else:
         body = "✅ Ortografía revisada, no encontré errores."
 
-    reply = f"Imagen {index} de {total}:\n{body}" if total > 1 else body
+    reply = f"Archivo {index} de {total}:\n{body}" if total > 1 else body
 
     mention_tag, mentioned_jids = _build_mention(sender_jid)
     if mention_tag:

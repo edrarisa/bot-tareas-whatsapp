@@ -42,6 +42,29 @@ def _payload(caption, sender_jid=SENDER_JID, group_jid=GROUP_JID, from_me=False,
     }
 
 
+def _pdf_payload(
+    caption,
+    sender_jid=SENDER_JID,
+    group_jid=GROUP_JID,
+    from_me=False,
+    base64="aGk=",
+    filename="propuesta.pdf",
+):
+    return {
+        "data": {
+            "key": {"remoteJid": group_jid, "participant": sender_jid, "fromMe": from_me},
+            "message": {
+                "documentMessage": {
+                    "caption": caption,
+                    "mimetype": "application/pdf",
+                    "fileName": filename,
+                },
+                "base64": base64,
+            },
+        }
+    }
+
+
 def _run(payload, roster, lid_resolver, group_registry=None, batch_buffer=None):
     """Runs the handler for a single image with no real waiting -- used by
     tests that don't care about batching multiple images together."""
@@ -295,6 +318,97 @@ def test_omits_mention_when_sender_jid_is_unresolved(monkeypatch):
     assert mentioned == []
 
 
+def test_reviews_a_pdf_sent_with_the_trigger_keyword(monkeypatch):
+    roster = FakeRoster({SENDER_JID: True})
+    lid_resolver = FakeLidResolver()
+    monkeypatch.setattr(
+        "handlers.spelling_handler.review_spelling",
+        lambda *a, **kw: SpellingReviewResult(has_errors=False, details=["Sin errores"]),
+    )
+    sent = []
+    monkeypatch.setattr(
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
+    )
+
+    _run(_pdf_payload("a1"), roster, lid_resolver)
+
+    assert len(sent) == 2
+    assert "no encontré errores" in sent[-1].lower()
+
+
+def test_passes_pdf_filename_through_to_the_reviewer(monkeypatch):
+    roster = FakeRoster({SENDER_JID: True})
+    lid_resolver = FakeLidResolver()
+    calls = []
+
+    def fake_review(file_base64, mimetype, filename=None, **kw):
+        calls.append((file_base64, mimetype, filename))
+        return SpellingReviewResult(has_errors=False, details=["Sin errores"])
+
+    monkeypatch.setattr("handlers.spelling_handler.review_spelling", fake_review)
+    monkeypatch.setattr(
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: None
+    )
+
+    _run(_pdf_payload("a1", base64="cGRmZGF0YQ==", filename="informe.pdf"), roster, lid_resolver)
+
+    assert len(calls) == 1
+    file_base64, mimetype, filename = calls[0]
+    assert file_base64 == "cGRmZGF0YQ=="
+    assert mimetype == "application/pdf"
+    assert filename == "informe.pdf"
+
+
+def test_batches_an_image_and_a_pdf_sent_together(monkeypatch):
+    """A mixed multi-file send (one image, one PDF) from the same sender
+    must be batched and reviewed together, same as an all-image batch."""
+    roster = FakeRoster({SENDER_JID: True})
+    lid_resolver = FakeLidResolver()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+
+    reviewed_mimetypes = []
+
+    def fake_review(file_base64, mimetype, filename=None, **kw):
+        reviewed_mimetypes.append(mimetype)
+        return SpellingReviewResult(has_errors=False, details=["Sin errores"])
+
+    monkeypatch.setattr("handlers.spelling_handler.review_spelling", fake_review)
+    sent = []
+    monkeypatch.setattr(
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
+    )
+
+    batch_buffer = ImageBatchBuffer()
+    added_first = threading.Event()
+    release_first = threading.Event()
+
+    def sleep_and_wait_for_sibling(seconds):
+        added_first.set()
+        release_first.wait(timeout=2)
+
+    payload_1 = _payload("revisar ortografia", base64="aW1hZ2Ux")
+    payload_2 = _pdf_payload("", base64="cGRmZGF0YQ==")
+
+    first_call = threading.Thread(
+        target=handle_webhook_payload,
+        args=(payload_1, roster, lid_resolver, group_registry, batch_buffer, sleep_and_wait_for_sibling),
+    )
+    first_call.start()
+    assert added_first.wait(timeout=2)
+
+    handle_webhook_payload(
+        payload_2, roster, lid_resolver, group_registry, batch_buffer, sleep=lambda seconds: None
+    )
+
+    release_first.set()
+    first_call.join(timeout=2)
+
+    assert sorted(reviewed_mimetypes) == ["application/pdf", "image/jpeg"]
+    assert len(sent) == 3
+    assert any("Archivo 1 de 2:" in text for text in sent)
+    assert any("Archivo 2 de 2:" in text for text in sent)
+
+
 def test_ignores_review_errors_without_replying(monkeypatch):
     roster = FakeRoster({SENDER_JID: True})
     lid_resolver = FakeLidResolver()
@@ -374,8 +488,8 @@ def test_multiple_images_from_same_sender_are_batched_and_all_reviewed(monkeypat
 
     reviewed_images = []
 
-    def fake_review(image_base64, mimetype, **kw):
-        reviewed_images.append(image_base64)
+    def fake_review(file_base64, mimetype, filename=None, **kw):
+        reviewed_images.append(file_base64)
         return SpellingReviewResult(has_errors=False, details=["Sin errores"])
 
     monkeypatch.setattr("handlers.spelling_handler.review_spelling", fake_review)
@@ -427,8 +541,8 @@ def test_multiple_images_from_same_sender_are_batched_and_all_reviewed(monkeypat
 
     assert sorted(reviewed_images) == ["aW1hZ2Ux", "aW1hZ2Uy"]
     assert len(sent) == 3
-    assert any("Imagen 1 de 2:" in text for text in sent)
-    assert any("Imagen 2 de 2:" in text for text in sent)
+    assert any("Archivo 1 de 2:" in text for text in sent)
+    assert any("Archivo 2 de 2:" in text for text in sent)
 
 
 def test_single_image_reply_has_no_numbering_prefix(monkeypatch):
@@ -446,7 +560,7 @@ def test_single_image_reply_has_no_numbering_prefix(monkeypatch):
     _run(_payload("revisar ortografia"), roster, lid_resolver)
 
     assert len(sent) == 2
-    assert all("Imagen" not in text for text in sent)
+    assert all("Archivo" not in text for text in sent)
 
 
 def test_batch_without_keyword_in_any_image_is_ignored(monkeypatch):
@@ -512,8 +626,8 @@ def test_images_from_the_same_sender_in_different_groups_are_not_batched_togethe
 
     reviewed_images = []
 
-    def fake_review(image_base64, mimetype, **kw):
-        reviewed_images.append(image_base64)
+    def fake_review(file_base64, mimetype, filename=None, **kw):
+        reviewed_images.append(file_base64)
         return SpellingReviewResult(has_errors=False, details=["Sin errores"])
 
     monkeypatch.setattr("handlers.spelling_handler.review_spelling", fake_review)
@@ -564,6 +678,6 @@ def test_images_from_the_same_sender_in_different_groups_are_not_batched_togethe
     assert sorted(reviewed_images) == ["aW1hZ2Ux", "aW1hZ2Uy"]
     assert len(sent) == 4
     for group_jid, text in sent:
-        assert "Imagen" not in text
+        assert "Archivo" not in text
     sent_groups = {g for g, _ in sent}
     assert sent_groups == {GROUP_JID, OTHER_GROUP_JID}

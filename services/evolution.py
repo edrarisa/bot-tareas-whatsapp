@@ -31,13 +31,16 @@ class IncomingMessage:
 
 
 @dataclass
-class IncomingImageMessage:
+class IncomingReviewableMessage:
+    """An image or PDF document eligible for spelling review."""
+
     group_jid: str
     sender_jid: str
     caption: str
-    image_base64: str
+    file_base64: str
     mimetype: str
     from_me: bool
+    filename: str | None = None
 
 
 def parse_webhook_payload(payload: dict) -> list[IncomingMessage]:
@@ -98,11 +101,11 @@ def _parse_message_item(item: dict) -> IncomingMessage | None:
     )
 
 
-def parse_image_messages(payload: dict) -> list[IncomingImageMessage]:
-    """Returns the parseable image messages found in the payload (possibly empty).
+def parse_reviewable_messages(payload: dict) -> list[IncomingReviewableMessage]:
+    """Returns the parseable image/PDF messages found in the payload (possibly empty).
 
     Requires the Evolution API instance to have "Webhook Base64" enabled, so
-    the image content arrives directly in the payload as a "base64" field --
+    the file content arrives directly in the payload as a "base64" field --
     without it, there is nothing here to send to the spelling reviewer.
     """
     data = payload.get("data")
@@ -113,13 +116,13 @@ def parse_image_messages(payload: dict) -> list[IncomingImageMessage]:
 
     messages = []
     for item in items:
-        message = _parse_image_item(item)
+        message = _parse_reviewable_item(item)
         if message is not None:
             messages.append(message)
     return messages
 
 
-def _parse_image_item(item: dict) -> IncomingImageMessage | None:
+def _parse_reviewable_item(item: dict) -> IncomingReviewableMessage | None:
     key = item.get("key") or {}
     group_jid = key.get("remoteJid")
     if not group_jid:
@@ -127,32 +130,43 @@ def _parse_image_item(item: dict) -> IncomingImageMessage | None:
 
     message = item.get("message") or {}
     image_message = message.get("imageMessage")
-    if image_message is None:
+    document_message = message.get("documentMessage")
+
+    if image_message is not None:
+        source = image_message
+        caption = image_message.get("caption") or ""
+        mimetype = image_message.get("mimetype") or "image/jpeg"
+        filename = None
+    elif document_message is not None and document_message.get("mimetype") == "application/pdf":
+        source = document_message
+        caption = document_message.get("caption") or ""
+        mimetype = "application/pdf"
+        filename = document_message.get("fileName") or "documento.pdf"
+    else:
         return None
 
-    image_base64 = message.get("base64")
-    if not image_base64:
+    file_base64 = message.get("base64")
+    if not file_base64:
         logger.info(
-            "Ignoring image message with no base64 content -- check that "
+            "Ignoring reviewable message with no base64 content -- check that "
             "'Webhook Base64' is enabled on the Evolution API instance. "
-            "Top-level keys of item: %s. Keys of message: %s. Keys of imageMessage: %s",
+            "Top-level keys of item: %s. Keys of message: %s. Keys of source: %s",
             list(item.keys()),
             list(message.keys()),
-            list(image_message.keys()) if isinstance(image_message, dict) else repr(image_message)[:200],
+            list(source.keys()) if isinstance(source, dict) else repr(source)[:200],
         )
         return None
 
     sender_jid = key.get("participant") or group_jid
     from_me = bool(key.get("fromMe", False))
-    caption = image_message.get("caption") or ""
-    mimetype = image_message.get("mimetype") or "image/jpeg"
 
-    return IncomingImageMessage(
+    return IncomingReviewableMessage(
         group_jid=group_jid,
         sender_jid=sender_jid,
         caption=caption,
-        image_base64=image_base64,
+        file_base64=file_base64,
         mimetype=mimetype,
+        filename=filename,
         from_me=from_me,
     )
 

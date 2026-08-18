@@ -1,6 +1,6 @@
 """
-Reviews the Spanish spelling of text visible in an image, using OpenAI's
-vision-capable chat completions API.
+Reviews the Spanish spelling of text visible in an image or a PDF document,
+using OpenAI's vision-capable chat completions API.
 """
 import json
 import logging
@@ -33,7 +33,7 @@ class SpellingReviewResult:
 
 
 SYSTEM_PROMPT = """Eres un corrector de ortografía y redacción en español. Analiza el texto \
-visible en la imagen y revisa si tiene errores.
+visible en la imagen o el documento PDF que se te comparte y revisa si tiene errores.
 
 Revisa cada palabra y cada signo del texto, uno por uno, con cuidado, sin saltarte nada -- es \
 importante encontrar TODOS los errores presentes, no solo los más evidentes. Incluye en tu \
@@ -57,26 +57,43 @@ no los combines en un solo texto. Si has_errors es false, una lista con un únic
 confirmando que no hay errores."""
 
 
+def _build_content(file_base64: str, mimetype: str, filename: str | None) -> list[dict]:
+    if mimetype.startswith("image/"):
+        return [
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:{mimetype};base64,{file_base64}"},
+            }
+        ]
+    if mimetype == "application/pdf":
+        return [
+            {
+                "type": "file",
+                "file": {
+                    "filename": filename or "documento.pdf",
+                    "file_data": f"data:{mimetype};base64,{file_base64}",
+                },
+            }
+        ]
+    raise ValueError(f"Unsupported mimetype for spelling review: {mimetype}")
+
+
 def review_spelling(
-    image_base64: str, mimetype: str, client: OpenAI | None = None
+    file_base64: str,
+    mimetype: str,
+    filename: str | None = None,
+    client: OpenAI | None = None,
 ) -> SpellingReviewResult:
     active_client = client or _get_client()
     try:
+        content = _build_content(file_base64, mimetype, filename)
         response = active_client.chat.completions.create(
             model="gpt-5.6-sol",
             response_format={"type": "json_object"},
             timeout=30,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:{mimetype};base64,{image_base64}"},
-                        }
-                    ],
-                },
+                {"role": "user", "content": content},
             ],
         )
         data = json.loads(response.choices[0].message.content)

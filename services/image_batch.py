@@ -1,7 +1,7 @@
 """
-Buffers image messages arriving in quick succession from the same sender,
-so a single "ortografia" keyword anywhere in a WhatsApp multi-image send
-triggers review of every image in that send -- not just the one that
+Buffers image/PDF messages arriving in quick succession from the same
+sender, so a single "ortografia" keyword anywhere in a WhatsApp multi-file
+send triggers review of every file in that send -- not just the one that
 happened to carry the caption.
 """
 import threading

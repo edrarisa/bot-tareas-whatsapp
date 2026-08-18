@@ -105,6 +105,38 @@ def test_sends_image_as_data_url_to_openai():
     assert image_url == "data:image/png;base64,aGVsbG8="
 
 
+def test_sends_pdf_as_file_data_url_to_openai():
+    content = json.dumps({"has_errors": False, "details": ["Sin errores"]})
+    client = FakeClient(content=content)
+
+    review_spelling("aGVsbG8=", "application/pdf", "propuesta.pdf", client=client)
+
+    kwargs = client.chat.completions.last_call_kwargs
+    user_message = kwargs["messages"][1]
+    file_content = user_message["content"][0]
+    assert file_content["type"] == "file"
+    assert file_content["file"]["filename"] == "propuesta.pdf"
+    assert file_content["file"]["file_data"] == "data:application/pdf;base64,aGVsbG8="
+
+
+def test_defaults_pdf_filename_when_not_given():
+    content = json.dumps({"has_errors": False, "details": ["Sin errores"]})
+    client = FakeClient(content=content)
+
+    review_spelling("aGVsbG8=", "application/pdf", client=client)
+
+    kwargs = client.chat.completions.last_call_kwargs
+    file_content = kwargs["messages"][1]["content"][0]
+    assert file_content["file"]["filename"] == "documento.pdf"
+
+
+def test_raises_error_for_unsupported_mimetype():
+    client = FakeClient(content=json.dumps({"has_errors": False, "details": ["x"]}))
+
+    with pytest.raises(SpellingReviewError):
+        review_spelling("aGVsbG8=", "application/vnd.ms-excel", client=client)
+
+
 def test_raises_error_on_invalid_json():
     client = FakeClient(content="not json")
 
