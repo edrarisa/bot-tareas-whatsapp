@@ -42,9 +42,12 @@ class QuotaExceededError(SpellingReviewError):
 # A large PDF makes OpenAI extract text AND render a page image for every
 # page, which can take long enough to blow past our own request timeout and
 # WhatsApp's webhook-delivery timeout (the latter causes Evolution API to
-# retry the whole webhook call, reprocessing the same message). Rejecting
-# oversized PDFs upfront avoids both.
-_MAX_PDF_BYTES = 15 * 1024 * 1024
+# retry the whole webhook call, reprocessing the same message -- though a
+# redelivery is now caught by SeenMessageTracker instead of being
+# reprocessed). Rejecting oversized PDFs upfront still avoids the slow
+# request in the first place. 50 MB matches OpenAI's own hard per-file
+# limit, so this doesn't add an independent safety margin below that.
+_MAX_PDF_BYTES = 50 * 1024 * 1024
 
 
 @dataclass

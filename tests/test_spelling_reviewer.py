@@ -149,8 +149,8 @@ def test_raises_error_for_unsupported_mimetype():
 
 def test_rejects_pdf_larger_than_the_limit():
     client = FakeClient(content=json.dumps({"has_errors": False, "details": ["x"]}))
-    # Base64 inflates size by ~4/3, so this decodes to ~16 MB -- over the 15 MB limit.
-    oversized_base64 = "A" * (16 * 1024 * 1024 * 4 // 3)
+    # Base64 inflates size by ~4/3, so this decodes to ~51 MB -- over the 50 MB limit.
+    oversized_base64 = "A" * (51 * 1024 * 1024 * 4 // 3)
 
     with pytest.raises(FileTooLargeError):
         review_spelling(oversized_base64, "application/pdf", client=client)

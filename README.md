@@ -8,7 +8,7 @@ Bot de WhatsApp con dos funciones, en varios grupos (uno por cliente):
 2. Cuando alguien del equipo manda una imagen o un PDF con la palabra "ortografía" (o el código
    "a1") en el texto, revisa la ortografía en español del archivo con OpenAI y responde en el
    grupo, etiquetando a quien lo envió. Si se mandan varios archivos juntos (imágenes y/o PDFs) y
-   solo uno trae el código, se revisan todos. Los PDFs de más de 15 MB no se procesan -- el bot
+   solo uno trae el código, se revisan todos. Los PDFs de más de 50 MB no se procesan -- el bot
    responde avisando que el archivo es muy grande, en vez de intentarlo y demorarse tanto que
    WhatsApp reintente el envío del mensaje. Ver
    `docs/superpowers/specs/2026-08-05-image-spelling-review-design.md`.
