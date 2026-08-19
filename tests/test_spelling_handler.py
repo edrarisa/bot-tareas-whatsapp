@@ -1,7 +1,8 @@
 import threading
 
 from services.image_batch import ImageBatchBuffer
-from services.spelling_reviewer import SpellingReviewError, SpellingReviewResult
+from services.seen_messages import SeenMessageTracker
+from services.spelling_reviewer import FileTooLargeError, SpellingReviewError, SpellingReviewResult
 from handlers.spelling_handler import handle_webhook_payload
 
 GROUP_JID = "120363429440515454@g.us"
@@ -33,10 +34,15 @@ class FakeGroupRegistry:
         return self._mapping.get(group_jid)
 
 
-def _payload(caption, sender_jid=SENDER_JID, group_jid=GROUP_JID, from_me=False, base64="aGk="):
+def _payload(
+    caption, sender_jid=SENDER_JID, group_jid=GROUP_JID, from_me=False, base64="aGk=", message_id=None
+):
+    key = {"remoteJid": group_jid, "participant": sender_jid, "fromMe": from_me}
+    if message_id is not None:
+        key["id"] = message_id
     return {
         "data": {
-            "key": {"remoteJid": group_jid, "participant": sender_jid, "fromMe": from_me},
+            "key": key,
             "message": {"imageMessage": {"caption": caption}, "base64": base64},
         }
     }
@@ -49,10 +55,14 @@ def _pdf_payload(
     from_me=False,
     base64="aGk=",
     filename="propuesta.pdf",
+    message_id=None,
 ):
+    key = {"remoteJid": group_jid, "participant": sender_jid, "fromMe": from_me}
+    if message_id is not None:
+        key["id"] = message_id
     return {
         "data": {
-            "key": {"remoteJid": group_jid, "participant": sender_jid, "fromMe": from_me},
+            "key": key,
             "message": {
                 "documentMessage": {
                     "caption": caption,
@@ -65,7 +75,7 @@ def _pdf_payload(
     }
 
 
-def _run(payload, roster, lid_resolver, group_registry=None, batch_buffer=None):
+def _run(payload, roster, lid_resolver, group_registry=None, batch_buffer=None, seen_messages=None):
     """Runs the handler for a single image with no real waiting -- used by
     tests that don't care about batching multiple images together."""
     handle_webhook_payload(
@@ -74,6 +84,7 @@ def _run(payload, roster, lid_resolver, group_registry=None, batch_buffer=None):
         lid_resolver,
         group_registry or FakeGroupRegistry({GROUP_JID: "clinicachia"}),
         batch_buffer or ImageBatchBuffer(),
+        seen_messages or SeenMessageTracker(),
         sleep=lambda seconds: None,
     )
 
@@ -379,6 +390,7 @@ def test_batches_an_image_and_a_pdf_sent_together(monkeypatch):
     )
 
     batch_buffer = ImageBatchBuffer()
+    seen_messages = SeenMessageTracker()
     added_first = threading.Event()
     release_first = threading.Event()
 
@@ -391,13 +403,27 @@ def test_batches_an_image_and_a_pdf_sent_together(monkeypatch):
 
     first_call = threading.Thread(
         target=handle_webhook_payload,
-        args=(payload_1, roster, lid_resolver, group_registry, batch_buffer, sleep_and_wait_for_sibling),
+        args=(
+            payload_1,
+            roster,
+            lid_resolver,
+            group_registry,
+            batch_buffer,
+            seen_messages,
+            sleep_and_wait_for_sibling,
+        ),
     )
     first_call.start()
     assert added_first.wait(timeout=2)
 
     handle_webhook_payload(
-        payload_2, roster, lid_resolver, group_registry, batch_buffer, sleep=lambda seconds: None
+        payload_2,
+        roster,
+        lid_resolver,
+        group_registry,
+        batch_buffer,
+        seen_messages,
+        sleep=lambda seconds: None,
     )
 
     release_first.set()
@@ -407,6 +433,50 @@ def test_batches_an_image_and_a_pdf_sent_together(monkeypatch):
     assert len(sent) == 3
     assert any("Archivo 1 de 2:" in text for text in sent)
     assert any("Archivo 2 de 2:" in text for text in sent)
+
+
+def test_skips_a_redelivered_message_with_the_same_id(monkeypatch):
+    """Covers a slow review (e.g. a large PDF) causing Evolution API's
+    webhook delivery to time out and retry -- the retry carries the same
+    message id and must not be reprocessed."""
+    roster = FakeRoster({SENDER_JID: True})
+    lid_resolver = FakeLidResolver()
+    monkeypatch.setattr(
+        "handlers.spelling_handler.review_spelling",
+        lambda *a, **kw: SpellingReviewResult(has_errors=False, details=["Sin errores"]),
+    )
+    sent = []
+    monkeypatch.setattr(
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
+    )
+    seen_messages = SeenMessageTracker()
+    payload = _payload("revisar ortografia", message_id="ABC123")
+
+    _run(payload, roster, lid_resolver, seen_messages=seen_messages)
+    _run(payload, roster, lid_resolver, seen_messages=seen_messages)
+
+    # Only the first delivery produced any output -- "reviewing now" plus
+    # the final reply, not four messages from two full runs.
+    assert len(sent) == 2
+
+
+def test_replies_with_a_too_large_message_for_an_oversized_pdf(monkeypatch):
+    roster = FakeRoster({SENDER_JID: True})
+    lid_resolver = FakeLidResolver()
+
+    def raise_too_large(*a, **kw):
+        raise FileTooLargeError("PDF is too large to review (~39.0 MB, limit is 15 MB)")
+
+    monkeypatch.setattr("handlers.spelling_handler.review_spelling", raise_too_large)
+    sent = []
+    monkeypatch.setattr(
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
+    )
+
+    _run(_pdf_payload("a1"), roster, lid_resolver)
+
+    assert len(sent) == 2
+    assert "muy grande" in sent[-1].lower()
 
 
 def test_ignores_review_errors_without_replying(monkeypatch):
@@ -471,6 +541,7 @@ def test_waits_before_deciding_whether_to_process(monkeypatch):
         lid_resolver,
         group_registry,
         ImageBatchBuffer(),
+        SeenMessageTracker(),
         sleep=lambda seconds: sleep_calls.append(seconds),
     )
 
@@ -499,6 +570,7 @@ def test_multiple_images_from_same_sender_are_batched_and_all_reviewed(monkeypat
     )
 
     batch_buffer = ImageBatchBuffer()
+    seen_messages = SeenMessageTracker()
     added_first_image = threading.Event()
     release_first_image = threading.Event()
 
@@ -519,6 +591,7 @@ def test_multiple_images_from_same_sender_are_batched_and_all_reviewed(monkeypat
             lid_resolver,
             group_registry,
             batch_buffer,
+            seen_messages,
             sleep_and_wait_for_sibling,
         ),
     )
@@ -533,6 +606,7 @@ def test_multiple_images_from_same_sender_are_batched_and_all_reviewed(monkeypat
         lid_resolver,
         group_registry,
         batch_buffer,
+        seen_messages,
         sleep=lambda seconds: None,
     )
 
@@ -577,6 +651,7 @@ def test_batch_without_keyword_in_any_image_is_ignored(monkeypatch):
     )
 
     batch_buffer = ImageBatchBuffer()
+    seen_messages = SeenMessageTracker()
     added_first_image = threading.Event()
     release_first_image = threading.Event()
 
@@ -595,6 +670,7 @@ def test_batch_without_keyword_in_any_image_is_ignored(monkeypatch):
             lid_resolver,
             group_registry,
             batch_buffer,
+            seen_messages,
             sleep_and_wait_for_sibling,
         ),
     )
@@ -607,6 +683,7 @@ def test_batch_without_keyword_in_any_image_is_ignored(monkeypatch):
         lid_resolver,
         group_registry,
         batch_buffer,
+        seen_messages,
         sleep=lambda seconds: None,
     )
 
@@ -637,6 +714,7 @@ def test_images_from_the_same_sender_in_different_groups_are_not_batched_togethe
     )
 
     batch_buffer = ImageBatchBuffer()
+    seen_messages = SeenMessageTracker()
     added_first_image = threading.Event()
     release_first_image = threading.Event()
 
@@ -655,6 +733,7 @@ def test_images_from_the_same_sender_in_different_groups_are_not_batched_togethe
             lid_resolver,
             group_registry,
             batch_buffer,
+            seen_messages,
             sleep_and_wait_for_sibling,
         ),
     )
@@ -667,6 +746,7 @@ def test_images_from_the_same_sender_in_different_groups_are_not_batched_togethe
         lid_resolver,
         group_registry,
         batch_buffer,
+        seen_messages,
         sleep=lambda seconds: None,
     )
 

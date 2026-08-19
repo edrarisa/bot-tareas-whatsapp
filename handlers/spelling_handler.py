@@ -1,11 +1,12 @@
 """
-Orchestrates incoming image/PDF messages: parse -> filter (group registered,
-known sender, not from_me) -> buffer briefly so several files sent together
-in one WhatsApp multi-file send are grouped -> if any file in the group has
-a trigger keyword in its caption, send a short "reviewing now" message,
-then review every file in the group with OpenAI -> reply in the group once
-per file, numbered when the group has more than one file and tagging
-(@) whoever sent it.
+Orchestrates incoming image/PDF messages: parse -> skip already-seen message
+IDs (a redelivered webhook must not be reprocessed) -> filter (group
+registered, known sender, not from_me) -> buffer briefly so several files
+sent together in one WhatsApp multi-file send are grouped -> if any file in
+the group has a trigger keyword in its caption, send a short "reviewing
+now" message, then review every file in the group with OpenAI -> reply in
+the group once per file, numbered when the group has more than one file
+and tagging (@) whoever sent it.
 
 WhatsApp delivers a multi-image send as separate messages (often as
 separate webhook calls), and typically only one of them carries the
@@ -13,6 +14,11 @@ caption text -- the rest arrive with no caption at all. The batch buffer
 exists to catch those caption-less siblings instead of silently ignoring
 them. Batches are keyed by (sender, group) so files sent to two
 different client groups around the same time never mix into one batch.
+
+A large PDF can take OpenAI long enough to process that Evolution API's
+own webhook delivery gives up and retries the same webhook call -- without
+the seen-message-ID check, that retry would be treated as a brand new file
+and reprocessed (including sending "reviewing now" again).
 """
 import logging
 import time
@@ -20,7 +26,8 @@ import unicodedata
 
 from services.evolution import parse_reviewable_messages, send_text_message
 from services.image_batch import ImageBatchBuffer
-from services.spelling_reviewer import SpellingReviewError, review_spelling
+from services.spelling_reviewer import FileTooLargeError, SpellingReviewError, review_spelling
+from services.seen_messages import SeenMessageTracker
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +44,13 @@ def handle_webhook_payload(
     lid_resolver,
     group_registry,
     batch_buffer: ImageBatchBuffer,
+    seen_messages: SeenMessageTracker,
     sleep=time.sleep,
 ) -> None:
     for message in parse_reviewable_messages(payload):
-        _handle_reviewable_message(message, roster, lid_resolver, group_registry, batch_buffer, sleep)
+        _handle_reviewable_message(
+            message, roster, lid_resolver, group_registry, batch_buffer, seen_messages, sleep
+        )
 
 
 def _normalize(text: str) -> str:
@@ -54,8 +64,18 @@ def _has_trigger_keyword(caption: str) -> bool:
 
 
 def _handle_reviewable_message(
-    message, roster, lid_resolver, group_registry, batch_buffer: ImageBatchBuffer, sleep
+    message,
+    roster,
+    lid_resolver,
+    group_registry,
+    batch_buffer: ImageBatchBuffer,
+    seen_messages: SeenMessageTracker,
+    sleep,
 ) -> None:
+    if message.message_id and not seen_messages.mark_if_new(message.message_id):
+        logger.info("Ignoring redelivered message %s (already processed)", message.message_id)
+        return
+
     if message.from_me:
         return
 
@@ -108,6 +128,15 @@ def _build_mention(sender_jid: str) -> tuple[str, list[str]]:
 def _review_and_reply(message, index: int, total: int, sender_jid: str) -> None:
     try:
         result = review_spelling(message.file_base64, message.mimetype, message.filename)
+    except FileTooLargeError:
+        _send_reply(
+            message,
+            index,
+            total,
+            sender_jid,
+            "⚠️ El archivo es muy grande para revisarlo, intenta con uno más liviano.",
+        )
+        return
     except SpellingReviewError as exc:
         logger.error(
             "Spelling review failed for message from %s: %s",
@@ -122,6 +151,10 @@ def _review_and_reply(message, index: int, total: int, sender_jid: str) -> None:
     else:
         body = "✅ Ortografía revisada, no encontré errores."
 
+    _send_reply(message, index, total, sender_jid, body)
+
+
+def _send_reply(message, index: int, total: int, sender_jid: str, body: str) -> None:
     reply = f"Archivo {index} de {total}:\n{body}" if total > 1 else body
 
     mention_tag, mentioned_jids = _build_mention(sender_jid)

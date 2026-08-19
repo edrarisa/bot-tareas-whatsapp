@@ -346,6 +346,7 @@ def test_parses_image_message_with_caption_and_base64():
                 "remoteJid": "120363429440515454@g.us",
                 "participant": "573001112233@s.whatsapp.net",
                 "fromMe": False,
+                "id": "3EB0FF30A78B67BC098808",
             },
             "message": {
                 "imageMessage": {"caption": "revisar ortografía porfa", "mimetype": "image/png"},
@@ -362,6 +363,18 @@ def test_parses_image_message_with_caption_and_base64():
     assert message.file_base64 == "aGVsbG8="
     assert message.mimetype == "image/png"
     assert message.from_me is False
+    assert message.message_id == "3EB0FF30A78B67BC098808"
+
+
+def test_message_id_defaults_to_none_when_missing():
+    payload = {
+        "data": {
+            "key": {"remoteJid": "120363429440515454@g.us", "fromMe": False},
+            "message": {"imageMessage": {"caption": "ortografia"}, "base64": "aGVsbG8="},
+        }
+    }
+    messages = parse_reviewable_messages(payload)
+    assert messages[0].message_id is None
 
 
 def test_defaults_mimetype_when_missing():

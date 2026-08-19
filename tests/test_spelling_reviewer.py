@@ -3,6 +3,7 @@ import json
 import pytest
 
 from services.spelling_reviewer import (
+    FileTooLargeError,
     SpellingReviewError,
     SpellingReviewResult,
     review_spelling,
@@ -135,6 +136,32 @@ def test_raises_error_for_unsupported_mimetype():
 
     with pytest.raises(SpellingReviewError):
         review_spelling("aGVsbG8=", "application/vnd.ms-excel", client=client)
+
+
+def test_rejects_pdf_larger_than_the_limit():
+    client = FakeClient(content=json.dumps({"has_errors": False, "details": ["x"]}))
+    # Base64 inflates size by ~4/3, so this decodes to ~16 MB -- over the 15 MB limit.
+    oversized_base64 = "A" * (16 * 1024 * 1024 * 4 // 3)
+
+    with pytest.raises(FileTooLargeError):
+        review_spelling(oversized_base64, "application/pdf", client=client)
+
+
+def test_accepts_a_pdf_within_the_limit():
+    content = json.dumps({"has_errors": False, "details": ["Sin errores"]})
+    client = FakeClient(content=content)
+
+    result = review_spelling("A" * 1000, "application/pdf", client=client)
+
+    assert result.has_errors is False
+
+
+def test_file_too_large_error_is_a_spelling_review_error():
+    """The handler catches SpellingReviewError broadly for generic failures
+    -- FileTooLargeError must stay a subclass so that catch also covers it,
+    even though the handler checks for the specific subtype first to give a
+    more helpful reply."""
+    assert issubclass(FileTooLargeError, SpellingReviewError)
 
 
 def test_raises_error_on_invalid_json():

@@ -24,6 +24,7 @@ from services.lid_resolver import LidResolver
 from services.reminder_scanner import create_reminder_scanner
 from services.reminder_scheduler import run_reminder_loop
 from services.roster import Roster
+from services.seen_messages import SeenMessageTracker
 from services.sheets_client import create_personal_task_writer, create_sheets_client
 
 logging.basicConfig(level=Config.LOG_LEVEL)
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
     app.state.lid_resolver = LidResolver()
     app.state.personal_task_writer = create_personal_task_writer(Config.GOOGLE_CREDENTIALS_PATH)
     app.state.image_batch_buffer = ImageBatchBuffer()
+    app.state.seen_spelling_messages = SeenMessageTracker()
 
     reminder_scanner = create_reminder_scanner(sheets_client, Config.GOOGLE_CREDENTIALS_PATH)
     reminder_interval_seconds = int(os.getenv("REMINDER_INTERVAL_SECONDS", "900"))
@@ -85,6 +87,7 @@ async def webhook(request: Request):
             request.app.state.lid_resolver,
             request.app.state.group_registry,
             request.app.state.image_batch_buffer,
+            request.app.state.seen_spelling_messages,
         )
     except Exception:
         logger.exception("Failed to process spelling webhook payload")

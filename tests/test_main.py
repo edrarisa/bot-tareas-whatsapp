@@ -10,6 +10,7 @@ def _set_common_state():
     main.app.state.group_registry = "fake-group-registry"
     main.app.state.personal_task_writer = "fake-personal-task-writer"
     main.app.state.image_batch_buffer = "fake-image-batch-buffer"
+    main.app.state.seen_spelling_messages = "fake-seen-spelling-messages"
 
 
 def test_webhook_delegates_to_both_handlers(monkeypatch):
@@ -19,8 +20,10 @@ def test_webhook_delegates_to_both_handlers(monkeypatch):
     def fake_task_handler(payload, roster, lid_resolver, group_registry, personal_task_writer):
         task_calls.append((payload, roster, lid_resolver, group_registry, personal_task_writer))
 
-    def fake_spelling_handler(payload, roster, lid_resolver, group_registry, batch_buffer):
-        spelling_calls.append((payload, roster, lid_resolver, group_registry, batch_buffer))
+    def fake_spelling_handler(payload, roster, lid_resolver, group_registry, batch_buffer, seen_messages):
+        spelling_calls.append(
+            (payload, roster, lid_resolver, group_registry, batch_buffer, seen_messages)
+        )
 
     monkeypatch.setattr(main, "handle_task_payload", fake_task_handler)
     monkeypatch.setattr(main, "handle_spelling_payload", fake_spelling_handler)
@@ -35,7 +38,14 @@ def test_webhook_delegates_to_both_handlers(monkeypatch):
         (body, "fake-roster", "fake-lid-resolver", "fake-group-registry", "fake-personal-task-writer")
     ]
     assert spelling_calls == [
-        (body, "fake-roster", "fake-lid-resolver", "fake-group-registry", "fake-image-batch-buffer")
+        (
+            body,
+            "fake-roster",
+            "fake-lid-resolver",
+            "fake-group-registry",
+            "fake-image-batch-buffer",
+            "fake-seen-spelling-messages",
+        )
     ]
 
 
@@ -54,7 +64,7 @@ def test_webhook_returns_200_even_if_task_handler_raises(monkeypatch):
 
 
 def test_webhook_returns_200_even_if_spelling_handler_raises(monkeypatch):
-    def raising_handler(payload, roster, lid_resolver, group_registry, batch_buffer):
+    def raising_handler(payload, roster, lid_resolver, group_registry, batch_buffer, seen_messages):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(main, "handle_task_payload", lambda *a: None)
@@ -74,7 +84,7 @@ def test_spelling_handler_still_runs_when_task_handler_raises(monkeypatch):
     def raising_task_handler(payload, roster, lid_resolver, group_registry, personal_task_writer):
         raise RuntimeError("boom")
 
-    def fake_spelling_handler(payload, roster, lid_resolver, group_registry, batch_buffer):
+    def fake_spelling_handler(payload, roster, lid_resolver, group_registry, batch_buffer, seen_messages):
         spelling_calls.append(payload)
 
     monkeypatch.setattr(main, "handle_task_payload", raising_task_handler)

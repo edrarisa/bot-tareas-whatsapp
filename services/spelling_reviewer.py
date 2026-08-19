@@ -26,6 +26,18 @@ class SpellingReviewError(Exception):
     pass
 
 
+class FileTooLargeError(SpellingReviewError):
+    pass
+
+
+# A large PDF makes OpenAI extract text AND render a page image for every
+# page, which can take long enough to blow past our own request timeout and
+# WhatsApp's webhook-delivery timeout (the latter causes Evolution API to
+# retry the whole webhook call, reprocessing the same message). Rejecting
+# oversized PDFs upfront avoids both.
+_MAX_PDF_BYTES = 15 * 1024 * 1024
+
+
 @dataclass
 class SpellingReviewResult:
     has_errors: bool
@@ -66,6 +78,17 @@ def _build_content(file_base64: str, mimetype: str, filename: str | None) -> lis
             }
         ]
     if mimetype == "application/pdf":
+        estimated_bytes = len(file_base64) * 3 // 4
+        if estimated_bytes > _MAX_PDF_BYTES:
+            logger.info(
+                "Rejecting oversized PDF: ~%.1f MB, limit is %.0f MB",
+                estimated_bytes / 1_048_576,
+                _MAX_PDF_BYTES / 1_048_576,
+            )
+            raise FileTooLargeError(
+                f"PDF is too large to review (~{estimated_bytes / 1_048_576:.1f} MB, "
+                f"limit is {_MAX_PDF_BYTES / 1_048_576:.0f} MB)"
+            )
         return [
             {
                 "type": "file",
@@ -106,6 +129,8 @@ def review_spelling(
         if not all(isinstance(item, str) and item for item in details):
             raise ValueError("details must contain only non-empty strings")
         return SpellingReviewResult(has_errors=has_errors, details=details)
+    except FileTooLargeError:
+        raise
     except Exception as exc:
         logger.warning(f"Spelling reviewer failed: {str(exc)[:300]}")
         raise SpellingReviewError(str(exc)) from exc

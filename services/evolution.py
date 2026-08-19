@@ -41,6 +41,7 @@ class IncomingReviewableMessage:
     mimetype: str
     from_me: bool
     filename: str | None = None
+    message_id: str | None = None
 
 
 def parse_webhook_payload(payload: dict) -> list[IncomingMessage]:
@@ -159,6 +160,7 @@ def _parse_reviewable_item(item: dict) -> IncomingReviewableMessage | None:
 
     sender_jid = key.get("participant") or group_jid
     from_me = bool(key.get("fromMe", False))
+    message_id = key.get("id")
 
     return IncomingReviewableMessage(
         group_jid=group_jid,
@@ -168,6 +170,7 @@ def _parse_reviewable_item(item: dict) -> IncomingReviewableMessage | None:
         mimetype=mimetype,
         filename=filename,
         from_me=from_me,
+        message_id=message_id,
     )
 
 
