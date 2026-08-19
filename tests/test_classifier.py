@@ -1,8 +1,21 @@
 import json
 
+import httpx
 import pytest
+from openai import RateLimitError
 
-from services.classifier import ClassificationResult, ClassifierError, classify_message
+from services.classifier import (
+    ClassificationResult,
+    ClassifierError,
+    QuotaExceededError,
+    classify_message,
+)
+
+
+def _rate_limit_error(message="insufficient_quota"):
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    response = httpx.Response(status_code=429, request=request)
+    return RateLimitError(message, response=response, body=None)
 
 
 class FakeCompletions:
@@ -161,6 +174,17 @@ def test_raises_classifier_error_when_api_call_fails():
 
     with pytest.raises(ClassifierError):
         classify_message("algo", "2026-07-23", client=client)
+
+
+def test_raises_quota_exceeded_error_on_rate_limit():
+    client = FakeClient(raise_exc=_rate_limit_error())
+
+    with pytest.raises(QuotaExceededError):
+        classify_message("algo", "2026-07-23", client=client)
+
+
+def test_quota_exceeded_error_is_a_classifier_error():
+    assert issubclass(QuotaExceededError, ClassifierError)
 
 
 def test_sends_expected_request_to_openai():

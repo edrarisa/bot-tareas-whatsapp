@@ -1,13 +1,22 @@
 import json
 
+import httpx
 import pytest
+from openai import RateLimitError
 
 from services.spelling_reviewer import (
     FileTooLargeError,
+    QuotaExceededError,
     SpellingReviewError,
     SpellingReviewResult,
     review_spelling,
 )
+
+
+def _rate_limit_error(message="insufficient_quota"):
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    response = httpx.Response(status_code=429, request=request)
+    return RateLimitError(message, response=response, body=None)
 
 
 class FakeCompletions:
@@ -183,6 +192,17 @@ def test_raises_error_when_api_call_fails():
 
     with pytest.raises(SpellingReviewError):
         review_spelling("aGVsbG8=", "image/png", client=client)
+
+
+def test_raises_quota_exceeded_error_on_rate_limit():
+    client = FakeClient(raise_exc=_rate_limit_error())
+
+    with pytest.raises(QuotaExceededError):
+        review_spelling("aGVsbG8=", "image/png", client=client)
+
+
+def test_quota_exceeded_error_is_a_spelling_review_error():
+    assert issubclass(QuotaExceededError, SpellingReviewError)
 
 
 def test_raises_error_when_has_errors_is_not_a_bool():

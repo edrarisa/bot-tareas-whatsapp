@@ -1,6 +1,6 @@
 import re
 
-from services.classifier import ClassificationResult, ClassifierError
+from services.classifier import ClassificationResult, ClassifierError, QuotaExceededError
 from handlers.task_handler import handle_webhook_payload
 
 GROUP_JID = "120363429440515454@g.us"
@@ -381,6 +381,37 @@ def test_ignores_classifier_errors_without_saving(monkeypatch):
     )
 
     assert task_writer.appended == []
+
+
+def test_warns_the_group_when_classifier_is_out_of_quota(monkeypatch):
+    roster = FakeRoster(
+        {SENDER_JID: "Ana", ASSIGNEE_JID: "Cristian"},
+        {ASSIGNEE_JID: "sheet-cristian"},
+    )
+    lid_resolver = FakeLidResolver()
+    group_registry = FakeGroupRegistry({GROUP_JID: "clinicachia"})
+    task_writer = FakePersonalTaskWriter()
+
+    def raise_quota_error(text, date, **kw):
+        raise QuotaExceededError("insufficient_quota")
+
+    monkeypatch.setattr("handlers.task_handler.classify_message", raise_quota_error)
+    sent = []
+    monkeypatch.setattr(
+        "handlers.task_handler.send_text_message", lambda group_jid, text: sent.append(text)
+    )
+
+    handle_webhook_payload(
+        _payload("algo @Cristian", mentioned_jids=[ASSIGNEE_JID]),
+        roster,
+        lid_resolver,
+        group_registry,
+        task_writer,
+    )
+
+    assert task_writer.appended == []
+    assert len(sent) == 1
+    assert "sin créditos" in sent[0].lower()
 
 
 def test_created_at_and_classifier_date_share_the_same_moment(monkeypatch):

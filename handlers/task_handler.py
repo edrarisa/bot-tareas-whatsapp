@@ -8,7 +8,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from config import Config
-from services.classifier import ClassifierError, classify_message
+from services.classifier import ClassifierError, QuotaExceededError, classify_message
 from services.evolution import parse_webhook_payload, send_text_message
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,14 @@ def _handle_message(message, roster, lid_resolver, group_registry, personal_task
 
     try:
         result = classify_message(message.text, today)
+    except QuotaExceededError:
+        logger.error("Classifier out of quota for message from %s", sender_jid)
+        send_text_message(
+            message.group_jid,
+            "⚠️ No pude revisar este mensaje: el servicio de IA se quedó sin créditos o está "
+            "saturado por ahora. Avisen a quien administra el bot. No se guardó ninguna tarea.",
+        )
+        return
     except ClassifierError:
         logger.exception("Classifier failed for message from %s", sender_jid)
         return

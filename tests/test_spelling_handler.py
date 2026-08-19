@@ -2,7 +2,12 @@ import threading
 
 from services.image_batch import ImageBatchBuffer
 from services.seen_messages import SeenMessageTracker
-from services.spelling_reviewer import FileTooLargeError, SpellingReviewError, SpellingReviewResult
+from services.spelling_reviewer import (
+    FileTooLargeError,
+    QuotaExceededError,
+    SpellingReviewError,
+    SpellingReviewResult,
+)
 from handlers.spelling_handler import handle_webhook_payload
 
 GROUP_JID = "120363429440515454@g.us"
@@ -477,6 +482,25 @@ def test_replies_with_a_too_large_message_for_an_oversized_pdf(monkeypatch):
 
     assert len(sent) == 2
     assert "muy grande" in sent[-1].lower()
+
+
+def test_replies_with_a_quota_message_when_openai_is_out_of_credits(monkeypatch):
+    roster = FakeRoster({SENDER_JID: True})
+    lid_resolver = FakeLidResolver()
+
+    def raise_quota_error(*a, **kw):
+        raise QuotaExceededError("insufficient_quota")
+
+    monkeypatch.setattr("handlers.spelling_handler.review_spelling", raise_quota_error)
+    sent = []
+    monkeypatch.setattr(
+        "handlers.spelling_handler.send_text_message", lambda g, t, mentioned=None: sent.append(t)
+    )
+
+    _run(_payload("revisar ortografia"), roster, lid_resolver)
+
+    assert len(sent) == 2
+    assert "sin créditos" in sent[-1].lower()
 
 
 def test_ignores_review_errors_without_replying(monkeypatch):

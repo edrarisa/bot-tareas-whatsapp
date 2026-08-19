@@ -7,7 +7,7 @@ import json
 import logging
 from dataclasses import dataclass
 
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 
 from config import Config
 
@@ -24,6 +24,15 @@ def _get_client() -> OpenAI:
 
 
 class ClassifierError(Exception):
+    pass
+
+
+class QuotaExceededError(ClassifierError):
+    """OpenAI rejected the request for hitting a rate limit or running out
+    of credits (both surface as RateLimitError/HTTP 429) -- distinct from
+    other failures so the caller can tell the group what's actually wrong
+    instead of failing silently."""
+
     pass
 
 
@@ -100,6 +109,9 @@ def classify_message(
             hora_limite=hora_limite,
             es_urgente=es_urgente,
         )
+    except RateLimitError as exc:
+        logger.warning(f"Classifier rate-limited or out of quota: {exc}")
+        raise QuotaExceededError(str(exc)) from exc
     except Exception as exc:
         logger.warning(f"Classifier failed: {exc}")
         raise ClassifierError(str(exc)) from exc

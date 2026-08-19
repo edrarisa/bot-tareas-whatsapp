@@ -6,7 +6,7 @@ import json
 import logging
 from dataclasses import dataclass
 
-from openai import OpenAI
+from openai import OpenAI, RateLimitError
 
 from config import Config
 
@@ -27,6 +27,15 @@ class SpellingReviewError(Exception):
 
 
 class FileTooLargeError(SpellingReviewError):
+    pass
+
+
+class QuotaExceededError(SpellingReviewError):
+    """OpenAI rejected the request for hitting a rate limit or running out
+    of credits (both surface as RateLimitError/HTTP 429) -- distinct from
+    other failures so the caller can tell the group what's actually wrong
+    instead of failing silently."""
+
     pass
 
 
@@ -131,6 +140,9 @@ def review_spelling(
         return SpellingReviewResult(has_errors=has_errors, details=details)
     except FileTooLargeError:
         raise
+    except RateLimitError as exc:
+        logger.warning(f"Spelling reviewer rate-limited or out of quota: {str(exc)[:300]}")
+        raise QuotaExceededError(str(exc)) from exc
     except Exception as exc:
         logger.warning(f"Spelling reviewer failed: {str(exc)[:300]}")
         raise SpellingReviewError(str(exc)) from exc

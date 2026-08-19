@@ -26,7 +26,12 @@ import unicodedata
 
 from services.evolution import parse_reviewable_messages, send_text_message
 from services.image_batch import ImageBatchBuffer
-from services.spelling_reviewer import FileTooLargeError, SpellingReviewError, review_spelling
+from services.spelling_reviewer import (
+    FileTooLargeError,
+    QuotaExceededError,
+    SpellingReviewError,
+    review_spelling,
+)
 from services.seen_messages import SeenMessageTracker
 
 logger = logging.getLogger(__name__)
@@ -135,6 +140,17 @@ def _review_and_reply(message, index: int, total: int, sender_jid: str) -> None:
             total,
             sender_jid,
             "⚠️ El archivo es muy grande para revisarlo, intenta con uno más liviano.",
+        )
+        return
+    except QuotaExceededError:
+        logger.error("Spelling review out of quota for message from %s", message.sender_jid)
+        _send_reply(
+            message,
+            index,
+            total,
+            sender_jid,
+            "⚠️ No pude revisar esto: el servicio de IA se quedó sin créditos o está saturado "
+            "por ahora. Avisen a quien administra el bot.",
         )
         return
     except SpellingReviewError as exc:
