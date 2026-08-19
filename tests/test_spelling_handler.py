@@ -503,7 +503,7 @@ def test_replies_with_a_quota_message_when_openai_is_out_of_credits(monkeypatch)
     assert "sin créditos" in sent[-1].lower()
 
 
-def test_ignores_review_errors_without_replying(monkeypatch):
+def test_replies_with_a_generic_retry_message_on_review_errors(monkeypatch):
     roster = FakeRoster({SENDER_JID: True})
     lid_resolver = FakeLidResolver()
 
@@ -518,9 +518,12 @@ def test_ignores_review_errors_without_replying(monkeypatch):
 
     _run(_payload("revisar ortografia"), roster, lid_resolver)
 
-    # Only the "reviewing now" message went out -- no error content leaked
-    # to the group when the review itself failed.
-    assert len(sent) == 1
+    # "reviewing now" plus a generic retry reply -- no raw error content
+    # (e.g. "timeout") leaked to the group, just a friendly message telling
+    # them to try again.
+    assert len(sent) == 2
+    assert "intenta de nuevo" in sent[-1].lower()
+    assert "timeout" not in sent[-1].lower()
 
 
 def test_truncates_long_error_messages_in_logs(monkeypatch, caplog):
@@ -539,7 +542,7 @@ def test_truncates_long_error_messages_in_logs(monkeypatch, caplog):
     with caplog.at_level("ERROR"):
         _run(_payload("revisar ortografia"), roster, lid_resolver)
 
-    assert len(sent) == 1
+    assert len(sent) == 2
     error_records = [r for r in caplog.records if r.levelname == "ERROR"]
     assert len(error_records) == 1
     assert len(error_records[0].message) < 500

@@ -20,13 +20,25 @@ def _rate_limit_error(message="insufficient_quota"):
 
 
 class FakeCompletions:
-    def __init__(self, content=None, raise_exc=None):
+    def __init__(self, content=None, raise_exc=None, responses=None):
         self._content = content
         self._raise_exc = raise_exc
+        # `responses`, if given, is a list of items each consumed by one
+        # `create()` call, in order -- an item that's an Exception is
+        # raised, otherwise it's used as the response content. Lets a test
+        # simulate "fails on attempt 1, succeeds on attempt 2".
+        self._responses = list(responses) if responses is not None else None
+        self.call_count = 0
         self.last_call_kwargs = None
 
     def create(self, **kwargs):
+        self.call_count += 1
         self.last_call_kwargs = kwargs
+        if self._responses is not None:
+            item = self._responses.pop(0)
+            if isinstance(item, BaseException):
+                raise item
+            return FakeResponse(item)
         if self._raise_exc:
             raise self._raise_exc
         return FakeResponse(self._content)
@@ -177,21 +189,21 @@ def test_raises_error_on_invalid_json():
     client = FakeClient(content="not json")
 
     with pytest.raises(SpellingReviewError):
-        review_spelling("aGVsbG8=", "image/png", client=client)
+        review_spelling("aGVsbG8=", "image/png", client=client, max_attempts=1)
 
 
 def test_raises_error_on_missing_key():
     client = FakeClient(content=json.dumps({"details": "x"}))
 
     with pytest.raises(SpellingReviewError):
-        review_spelling("aGVsbG8=", "image/png", client=client)
+        review_spelling("aGVsbG8=", "image/png", client=client, max_attempts=1)
 
 
 def test_raises_error_when_api_call_fails():
     client = FakeClient(raise_exc=RuntimeError("timeout"))
 
     with pytest.raises(SpellingReviewError):
-        review_spelling("aGVsbG8=", "image/png", client=client)
+        review_spelling("aGVsbG8=", "image/png", client=client, max_attempts=1)
 
 
 def test_raises_quota_exceeded_error_on_rate_limit():
@@ -205,18 +217,60 @@ def test_quota_exceeded_error_is_a_spelling_review_error():
     assert issubclass(QuotaExceededError, SpellingReviewError)
 
 
+def test_retries_once_on_transient_failure_then_succeeds():
+    success_content = json.dumps({"has_errors": False, "details": ["Sin errores"]})
+    client = FakeClient(responses=[RuntimeError("Request timed out."), success_content])
+    sleep_calls = []
+
+    result = review_spelling(
+        "aGVsbG8=", "image/png", client=client, sleep=lambda seconds: sleep_calls.append(seconds)
+    )
+
+    assert result.has_errors is False
+    assert client.chat.completions.call_count == 2
+    assert sleep_calls == [2]
+
+
+def test_gives_up_after_exhausting_all_attempts():
+    client = FakeClient(responses=[RuntimeError("boom 1"), RuntimeError("boom 2")])
+
+    with pytest.raises(SpellingReviewError):
+        review_spelling("aGVsbG8=", "image/png", client=client, sleep=lambda seconds: None)
+
+    assert client.chat.completions.call_count == 2
+
+
+def test_does_not_retry_on_rate_limit_error():
+    client = FakeClient(raise_exc=_rate_limit_error())
+
+    with pytest.raises(QuotaExceededError):
+        review_spelling("aGVsbG8=", "image/png", client=client, sleep=lambda seconds: None)
+
+    assert client.chat.completions.call_count == 1
+
+
+def test_does_not_retry_or_call_openai_when_pdf_is_too_large():
+    client = FakeClient(content=json.dumps({"has_errors": False, "details": ["x"]}))
+    oversized_base64 = "A" * (51 * 1024 * 1024 * 4 // 3)
+
+    with pytest.raises(FileTooLargeError):
+        review_spelling(oversized_base64, "application/pdf", client=client)
+
+    assert client.chat.completions.call_count == 0
+
+
 def test_raises_error_when_has_errors_is_not_a_bool():
     client = FakeClient(content=json.dumps({"has_errors": "yes", "details": "x"}))
 
     with pytest.raises(SpellingReviewError):
-        review_spelling("aGVsbG8=", "image/png", client=client)
+        review_spelling("aGVsbG8=", "image/png", client=client, max_attempts=1)
 
 
 def test_raises_error_when_details_is_missing_or_empty():
     client = FakeClient(content=json.dumps({"has_errors": False, "details": []}))
 
     with pytest.raises(SpellingReviewError):
-        review_spelling("aGVsbG8=", "image/png", client=client)
+        review_spelling("aGVsbG8=", "image/png", client=client, max_attempts=1)
 
 
 def test_raises_error_when_details_is_not_a_list():
@@ -225,7 +279,7 @@ def test_raises_error_when_details_is_not_a_list():
     )
 
     with pytest.raises(SpellingReviewError):
-        review_spelling("aGVsbG8=", "image/png", client=client)
+        review_spelling("aGVsbG8=", "image/png", client=client, max_attempts=1)
 
 
 def test_raises_error_when_details_contains_empty_strings():
@@ -234,7 +288,7 @@ def test_raises_error_when_details_contains_empty_strings():
     )
 
     with pytest.raises(SpellingReviewError):
-        review_spelling("aGVsbG8=", "image/png", client=client)
+        review_spelling("aGVsbG8=", "image/png", client=client, max_attempts=1)
 
 
 def test_truncates_long_exception_messages_in_logs(caplog):
@@ -242,7 +296,7 @@ def test_truncates_long_exception_messages_in_logs(caplog):
     client = FakeClient(raise_exc=RuntimeError(long_message))
 
     with pytest.raises(SpellingReviewError) as exc_info:
-        review_spelling("aGVsbG8=", "image/png", client=client)
+        review_spelling("aGVsbG8=", "image/png", client=client, max_attempts=1)
 
     # Verify the full message is in the raised exception
     assert len(str(exc_info.value)) == 1000

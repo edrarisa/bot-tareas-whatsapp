@@ -4,6 +4,7 @@ using OpenAI's vision-capable chat completions API.
 """
 import json
 import logging
+import time
 from dataclasses import dataclass
 
 from openai import OpenAI, RateLimitError
@@ -38,6 +39,14 @@ class QuotaExceededError(SpellingReviewError):
 
     pass
 
+
+# A transient OpenAI failure (timeout, connection error, 5xx) gets one
+# automatic retry -- so the person doesn't have to resend the file --
+# before it's reported as failed. Quota/rate-limit errors and oversized
+# files are excluded (retrying them wouldn't help). A short pause between
+# attempts avoids immediately repeating whatever just failed.
+_MAX_ATTEMPTS = 2
+_RETRY_DELAY_SECONDS = 2
 
 # A large PDF makes OpenAI extract text AND render a page image for every
 # page, which can take long enough to blow past our own request timeout and
@@ -118,34 +127,51 @@ def review_spelling(
     mimetype: str,
     filename: str | None = None,
     client: OpenAI | None = None,
+    max_attempts: int = _MAX_ATTEMPTS,
+    sleep=time.sleep,
 ) -> SpellingReviewResult:
     active_client = client or _get_client()
     try:
         content = _build_content(file_base64, mimetype, filename)
-        response = active_client.chat.completions.create(
-            model="gpt-5.6-sol",
-            response_format={"type": "json_object"},
-            timeout=30,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": content},
-            ],
-        )
-        data = json.loads(response.choices[0].message.content)
-        has_errors = data["has_errors"]
-        details = data["details"]
-        if not isinstance(has_errors, bool):
-            raise ValueError(f"has_errors must be a bool, got {type(has_errors).__name__}")
-        if not isinstance(details, list) or not details:
-            raise ValueError("details must be a non-empty list of strings")
-        if not all(isinstance(item, str) and item for item in details):
-            raise ValueError("details must contain only non-empty strings")
-        return SpellingReviewResult(has_errors=has_errors, details=details)
     except FileTooLargeError:
         raise
-    except RateLimitError as exc:
-        logger.warning(f"Spelling reviewer rate-limited or out of quota: {str(exc)[:300]}")
-        raise QuotaExceededError(str(exc)) from exc
     except Exception as exc:
         logger.warning(f"Spelling reviewer failed: {str(exc)[:300]}")
         raise SpellingReviewError(str(exc)) from exc
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = active_client.chat.completions.create(
+                model="gpt-5.6-sol",
+                response_format={"type": "json_object"},
+                timeout=30,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": content},
+                ],
+            )
+            data = json.loads(response.choices[0].message.content)
+            has_errors = data["has_errors"]
+            details = data["details"]
+            if not isinstance(has_errors, bool):
+                raise ValueError(f"has_errors must be a bool, got {type(has_errors).__name__}")
+            if not isinstance(details, list) or not details:
+                raise ValueError("details must be a non-empty list of strings")
+            if not all(isinstance(item, str) and item for item in details):
+                raise ValueError("details must contain only non-empty strings")
+            return SpellingReviewResult(has_errors=has_errors, details=details)
+        except RateLimitError as exc:
+            logger.warning(f"Spelling reviewer rate-limited or out of quota: {str(exc)[:300]}")
+            raise QuotaExceededError(str(exc)) from exc
+        except Exception as exc:
+            if attempt < max_attempts:
+                logger.warning(
+                    "Spelling reviewer failed (attempt %d/%d), retrying: %s",
+                    attempt,
+                    max_attempts,
+                    str(exc)[:300],
+                )
+                sleep(_RETRY_DELAY_SECONDS)
+                continue
+            logger.warning(f"Spelling reviewer failed: {str(exc)[:300]}")
+            raise SpellingReviewError(str(exc)) from exc

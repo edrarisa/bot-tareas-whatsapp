@@ -19,6 +19,10 @@ A large PDF can take OpenAI long enough to process that Evolution API's
 own webhook delivery gives up and retries the same webhook call -- without
 the seen-message-ID check, that retry would be treated as a brand new file
 and reprocessed (including sending "reviewing now" again).
+
+review_spelling() already retries once on its own for transient OpenAI
+failures (so the person doesn't have to resend the file); if it still
+fails after that, the group gets told to try again instead of silence.
 """
 import logging
 import time
@@ -158,6 +162,13 @@ def _review_and_reply(message, index: int, total: int, sender_jid: str) -> None:
             "Spelling review failed for message from %s: %s",
             message.sender_jid,
             str(exc)[:300],
+        )
+        _send_reply(
+            message,
+            index,
+            total,
+            sender_jid,
+            "⚠️ No pude revisar esto, intenta de nuevo en un momento.",
         )
         return
 
