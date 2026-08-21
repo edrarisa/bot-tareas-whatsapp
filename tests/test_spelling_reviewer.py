@@ -120,7 +120,7 @@ def test_sends_image_as_data_url_to_openai():
     kwargs = client.chat.completions.last_call_kwargs
     assert kwargs["model"] == "gpt-5.6-sol"
     assert kwargs["response_format"] == {"type": "json_object"}
-    assert kwargs["timeout"] == 30
+    assert kwargs["timeout"] == 120
     user_message = kwargs["messages"][1]
     assert user_message["role"] == "user"
     image_url = user_message["content"][0]["image_url"]["url"]

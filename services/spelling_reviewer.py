@@ -48,6 +48,14 @@ class QuotaExceededError(SpellingReviewError):
 _MAX_ATTEMPTS = 2
 _RETRY_DELAY_SECONDS = 2
 
+# A many-page PDF makes OpenAI render a page image for every page, which
+# can genuinely take longer than a quick chat reply -- 120s gives a large
+# (but under the 50 MB limit) document a real chance to finish instead of
+# timing out. Worst case with a retry: ~242s before the group is told to
+# try again; the seen-message-ID check (SeenMessageTracker) is what keeps
+# a webhook redelivery during that wait from being reprocessed.
+_REQUEST_TIMEOUT_SECONDS = 120
+
 # A large PDF makes OpenAI extract text AND render a page image for every
 # page, which can take long enough to blow past our own request timeout and
 # WhatsApp's webhook-delivery timeout (the latter causes Evolution API to
@@ -144,7 +152,7 @@ def review_spelling(
             response = active_client.chat.completions.create(
                 model="gpt-5.6-sol",
                 response_format={"type": "json_object"},
-                timeout=30,
+                timeout=_REQUEST_TIMEOUT_SECONDS,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": content},
